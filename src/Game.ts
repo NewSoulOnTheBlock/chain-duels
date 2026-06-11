@@ -726,6 +726,114 @@ function currentPhase(ctx: any): PhaseName {
   return (ctx.phase as PhaseName) ?? 'main1';
 }
 
+// ── Auto-skip helpers ────────────────────────────────────────────────────────
+//
+// Each interactive phase (draw / standby / main1 / battle / main2) declares an
+// `endIf` below that calls one of these checks. When the helper returns false
+// (i.e. the player has zero legal actions to take), boardgame.io transitions
+// to the phase's `next` automatically. The end phase already auto-ends the
+// turn from its `onBegin`.
+//
+// IMPORTANT: never auto-skip while a chain is forming or resolving — players
+// are mid-decision and the engine must wait for their response.
+
+function isResolvingChain(G: GState): boolean {
+  return G.chain.length > 0 || G.priorityResponse != null;
+}
+
+/** True if the current player can do anything productive in a Main Phase. */
+function canActMainPhase(G: GState, ctx: any): boolean {
+  const p = G.players[ctx.currentPlayer];
+
+  // 1. Hand-based actions
+  if (p.hand.length > 0) {
+    // Free Spell/Trap zone + at least one spell/trap in hand → can always set or activate.
+    if (firstEmpty(p.spellTrapZones) !== -1) {
+      for (const defId of p.hand) {
+        const def = CARDS[defId];
+        if (isSpell(def) || isTrap(def)) return true;
+      }
+    }
+    // Normal Summon path: need an empty Main Monster Zone + a summonable monster
+    // (Level ≤ 4 OR Level ≥ 5 with enough monsters on field to tribute).
+    if (!p.hasNormalSummoned && firstEmpty(p.monsterZones) !== -1) {
+      const onField = p.monsterZones.filter(Boolean).length + (p.extraMonsterZone ? 1 : 0);
+      for (const defId of p.hand) {
+        const def = CARDS[defId];
+        if (!isMonster(def) || isExtraDeckMonster(def) || def.subtype === 'ritual') continue;
+        const need = tributesRequired(def.level ?? 0);
+        if (need === 0 || onField >= need) return true;
+      }
+    }
+    // Polymerization / Ritual spell can always initiate (target validation happens at play time).
+    for (const defId of p.hand) {
+      const def = CARDS[defId];
+      if (isSpell(def) && (def.effect === 'sp_polymerization' || def.subtype === 'ritual')) return true;
+    }
+  }
+
+  // 2. Field-based actions
+  // Change battle position of any face-up monster that hasn't moved/attacked this turn.
+  for (const m of [...p.monsterZones, p.extraMonsterZone]) {
+    if (m && m.faceUp && !m.setThisTurn && !m.positionChangedThisTurn && !m.attackedThisTurn) return true;
+  }
+  // Flip Summon any face-down defense monster set on a previous turn.
+  for (const m of p.monsterZones) {
+    if (m && m.position === 'def_down' && !m.faceUp && !m.setThisTurn) return true;
+  }
+  // Activate ignition / quick effect on a face-up Effect Monster.
+  for (const m of [...p.monsterZones, p.extraMonsterZone]) {
+    if (!m?.faceUp) continue;
+    const def = CARDS[m.defId];
+    if (isMonster(def) && def.subtype === 'effect' && def.effects?.some(
+      e => e.timing === 'ignition' || e.timing === 'quick',
+    )) return true;
+  }
+  // Activate a face-down spell/trap set on a previous turn.
+  for (const c of p.spellTrapZones) {
+    if (c && !c.faceUp && !c.setThisTurn) return true;
+  }
+  // Extra-deck Synchro/Xyz/Link Summon — possible if there are ≥ 2 face-up monsters
+  // and a non-empty Extra Deck. (Stricter material checks happen at play time.)
+  if (p.extraDeck.length > 0 && p.monsterZones.filter(m => m && m.faceUp).length >= 2) return true;
+
+  return false;
+}
+
+/** True if the current player can declare any attack this Battle Phase. */
+function canActBattlePhase(G: GState, ctx: any): boolean {
+  const pid = ctx.currentPlayer;
+  // YGO rule: the player who goes first cannot battle on turn 1.
+  if (!G.pastFirstTurn && pid === G.firstPlayer) return false;
+  const p = G.players[pid];
+  for (const m of [...p.monsterZones, p.extraMonsterZone]) {
+    if (!m || !m.faceUp || m.position !== 'atk') continue;
+    if (m.attackedThisTurn) continue;
+    return true; // any unattacked face-up ATK-position monster can attack (direct or targeted)
+  }
+  // Also: face-down spell/trap activated during battle (e.g. Mirror Force timing).
+  for (const c of p.spellTrapZones) {
+    if (c && !c.faceUp && !c.setThisTurn) return true;
+  }
+  return false;
+}
+
+/** True if the current player can activate anything during Standby Phase. */
+function canActStandbyPhase(G: GState, ctx: any): boolean {
+  const p = G.players[ctx.currentPlayer];
+  // Quick-effect monsters on the field.
+  for (const m of [...p.monsterZones, p.extraMonsterZone]) {
+    if (!m?.faceUp) continue;
+    const def = CARDS[m.defId];
+    if (isMonster(def) && def.effects?.some(e => e.timing === 'quick')) return true;
+  }
+  // Face-down spell/trap set on a previous turn.
+  for (const c of p.spellTrapZones) {
+    if (c && !c.faceUp && !c.setThisTurn) return true;
+  }
+  return false;
+}
+
 // ── Summon moves ─────────────────────────────────────────────────────────────
 
 /** Normal Summon / Set a Level ≤4 monster from hand. */
@@ -1482,6 +1590,8 @@ export const ChainsTCG: Game<GState> = {
         drawCard(G, ctx.currentPlayer, 1);
         G.players[ctx.currentPlayer].hasDrawnForTurn = true;
       },
+      // Draw phase has no interactive choice — auto-advance once the draw has resolved.
+      endIf: ({ G }) => !isResolvingChain(G),
       next: 'standby',
     },
     standby: {
@@ -1498,6 +1608,8 @@ export const ChainsTCG: Game<GState> = {
           }
         }
       },
+      // Auto-skip standby when the player has no quick effects to activate.
+      endIf: ({ G, ctx }) => !isResolvingChain(G) && !canActStandbyPhase(G, ctx),
       next: 'main1',
     },
     main1: {
@@ -1507,6 +1619,8 @@ export const ChainsTCG: Game<GState> = {
         fusionSummon, synchroSummon, xyzSummon, ritualSummon, linkSummon,
         advancePhase, endTurnMove, forceEndTurn,
       },
+      // Auto-skip Main Phase 1 when the player has no legal action left.
+      endIf: ({ G, ctx }) => !isResolvingChain(G) && !canActMainPhase(G, ctx),
       next: 'battle',
     },
     battle: {
@@ -1514,6 +1628,9 @@ export const ChainsTCG: Game<GState> = {
         declareAttack, resolveAttack, activateCard, passChain,
         advancePhase, endTurnMove, forceEndTurn,
       },
+      // Auto-skip Battle Phase when no monster can attack and no battle is mid-resolution.
+      endIf: ({ G, ctx }) =>
+        !isResolvingChain(G) && G.battle.kind === 'idle' && !canActBattlePhase(G, ctx),
       next: 'main2',
     },
     main2: {
@@ -1523,6 +1640,8 @@ export const ChainsTCG: Game<GState> = {
         fusionSummon, synchroSummon, xyzSummon, ritualSummon, linkSummon,
         advancePhase, endTurnMove, forceEndTurn,
       },
+      // Same auto-skip logic as Main Phase 1.
+      endIf: ({ G, ctx }) => !isResolvingChain(G) && !canActMainPhase(G, ctx),
       next: 'end',
     },
     end: {

@@ -1052,7 +1052,7 @@ export function ChainsBoard(props: Props) {
       minHeight: '100vh', background: '#06061a', color: '#fff',
       padding: mobile ? 8 : 16, fontFamily: 'system-ui, sans-serif',
     }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ width: '100%', margin: '0 auto' }}>
         {/* Opponent identity + LP */}
         <PlayerBar player={opp} isCurrent={ctx.currentPlayer === oppId} side="opp" />
 
