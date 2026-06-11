@@ -5256,16 +5256,7 @@ function MatchSeat({ seat, onLeave }: { seat: Seat; onLeave: () => void }) {
         <button onClick={leave} style={ghostBtn}>Leave</button>
       </div>
       {!isFull ? (
-        <div style={{ padding: 24, color: '#ccc' }}>
-          <WagerStatusBadge matchID={seat.matchID} />
-          <h3>Share this link with your opponent:</h3>
-          <pre style={{ background: '#111', padding: 8, border: '1px solid #333', borderRadius: 4, color: '#9cf' }}>
-            {window.location.origin + window.location.pathname + '#match=' + seat.matchID}
-          </pre>
-          <div style={{ marginTop: 12, fontSize: 13, color: '#888' }}>
-            {players.map((p, i) => <div key={i}>Seat P{i}: {p.name ?? <i style={{ color: '#666' }}>open</i>}</div>)}
-          </div>
-        </div>
+        <WaitingRoom seat={seat} players={players} />
       ) : (
         <>
           <BattleMusic />
@@ -5277,6 +5268,211 @@ function MatchSeat({ seat, onLeave }: { seat: Seat; onLeave: () => void }) {
           />
         </>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Waiting room — shown after creating a match while the opponent seat is open.
+// Sits on the painted throne-room background; centred glass panel holds the
+// share link + seat status + wager badge.
+// ─────────────────────────────────────────────────────────────────────────────
+function WaitingRoom({
+  seat, players,
+}: { seat: Seat; players: Array<{ id: number; name?: string }> }) {
+  const shareUrl = useMemo(
+    () => window.location.origin + window.location.pathname + '#match=' + seat.matchID,
+    [seat.matchID],
+  );
+  const [copied, setCopied] = useState(false);
+  const copyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {}
+  }, [shareUrl]);
+  const shareNative = useCallback(async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Chain Duels — Join my match',
+          text: 'Join my Chain Duels match',
+          url: shareUrl,
+        });
+      } else {
+        copyLink();
+      }
+    } catch {}
+  }, [shareUrl, copyLink]);
+
+  const me = players.find(p => String(p.id) === String(seat.playerID));
+  const opp = players.find(p => String(p.id) !== String(seat.playerID));
+
+  return (
+    <div style={{
+      position: 'relative',
+      minHeight: 'calc(100vh - 38px)',  // minus the top bar
+      backgroundImage: 'url(/waiting-room-bg.png)',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px 16px',
+    }}>
+      {/* Subtle vignette so the panel content is readable on bright spots */}
+      <div aria-hidden style={{
+        position: 'absolute', inset: 0,
+        background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.45) 100%)',
+        pointerEvents: 'none',
+      }} />
+
+      <div style={{
+        position: 'relative',
+        width: '100%', maxWidth: 720,
+        padding: '28px 32px 24px',
+        borderRadius: 14,
+        background: 'linear-gradient(180deg, rgba(10,12,32,0.86) 0%, rgba(8,10,26,0.92) 100%)',
+        border: '1px solid rgba(212,175,55,0.55)',
+        boxShadow: '0 22px 60px rgba(0,0,0,0.6), inset 0 0 60px rgba(70,90,200,0.12)',
+        color: '#e9eef7',
+      }}>
+        {/* Crossed swords sigil + title */}
+        <div style={{ textAlign: 'center', marginBottom: 18 }}>
+          <div style={{
+            fontSize: 34, lineHeight: 1,
+            filter: 'drop-shadow(0 0 12px rgba(192,132,252,0.55))',
+            marginBottom: 6,
+          }}>⚔</div>
+          <div style={{
+            fontSize: 11, color: '#d4af37', letterSpacing: 4, fontWeight: 800,
+          }}>WAITING FOR OPPONENT</div>
+          <div style={{
+            marginTop: 4, fontSize: 20, fontWeight: 900,
+            color: '#fff', letterSpacing: 1,
+          }}>Your throne is set</div>
+        </div>
+
+        {/* Wager status if applicable */}
+        <WagerStatusBadge matchID={seat.matchID} />
+
+        {/* Two seat plates — left for you, right for opponent */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center', gap: 10, marginTop: 18,
+        }}>
+          <SeatPlate
+            label="YOU"
+            name={me?.name ?? seat.playerName}
+            color="#4ea1ff"
+            filled={!!me?.name}
+          />
+          <div style={{
+            fontSize: 24, color: '#d4af37', fontWeight: 900,
+            opacity: 0.85, letterSpacing: 2,
+          }}>VS</div>
+          <SeatPlate
+            label="OPPONENT"
+            name={opp?.name}
+            color="#c084fc"
+            filled={!!opp?.name}
+            pulsing={!opp?.name}
+          />
+        </div>
+
+        {/* Share link block */}
+        <div style={{
+          marginTop: 22,
+          padding: '14px 14px 12px',
+          borderRadius: 10,
+          background: 'rgba(8,10,26,0.7)',
+          border: '1px solid rgba(212,175,55,0.4)',
+        }}>
+          <div style={{
+            fontSize: 11, letterSpacing: 2.5, fontWeight: 800,
+            color: '#d4af37', marginBottom: 8, display: 'flex',
+            alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span>🔗 INVITE LINK</span>
+            <span style={{ color: copied ? '#7fffa0' : '#7a7060', fontWeight: 700 }}>
+              {copied ? '✓ COPIED' : ''}
+            </span>
+          </div>
+          <div style={{
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: 12, color: '#9fc4ff',
+            padding: '8px 10px',
+            background: 'rgba(0,0,0,0.4)',
+            border: '1px solid rgba(120,170,255,0.25)',
+            borderRadius: 6,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            marginBottom: 10,
+          }}>{shareUrl}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={copyLink} style={{
+              flex: 1, minWidth: 130, padding: '10px 14px',
+              background: 'linear-gradient(180deg, #f0d27a, #c69533)',
+              color: '#1a1408', border: '1px solid #8a6d24', borderRadius: 8,
+              fontWeight: 800, fontSize: 13, letterSpacing: 1, cursor: 'pointer',
+              boxShadow: '0 6px 18px -6px rgba(217,184,95,0.55)',
+            }}>📋 Copy Link</button>
+            <button onClick={shareNative} style={{
+              flex: 1, minWidth: 130, padding: '10px 14px',
+              background: 'rgba(192,132,252,0.18)',
+              color: '#e6d4ff', border: '1px solid rgba(192,132,252,0.55)',
+              borderRadius: 8, fontWeight: 800, fontSize: 13, letterSpacing: 1, cursor: 'pointer',
+            }}>↗ Share…</button>
+          </div>
+        </div>
+
+        <div style={{
+          marginTop: 14, fontSize: 11, color: '#9faabf', letterSpacing: 0.5,
+          textAlign: 'center', fontStyle: 'italic', opacity: 0.85,
+        }}>
+          The duel begins the moment your opponent takes their seat.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SeatPlate({
+  label, name, color, filled, pulsing,
+}: {
+  label: string; name?: string; color: string;
+  filled: boolean; pulsing?: boolean;
+}) {
+  return (
+    <div style={{
+      padding: '12px 12px',
+      borderRadius: 10,
+      background: filled
+        ? `linear-gradient(180deg, rgba(${color === '#4ea1ff' ? '78,161,255' : '192,132,252'},0.22), rgba(${color === '#4ea1ff' ? '78,161,255' : '192,132,252'},0.08))`
+        : 'rgba(255,255,255,0.04)',
+      border: `1px solid ${filled ? color : 'rgba(255,255,255,0.15)'}`,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+      minHeight: 70,
+      animation: pulsing ? 'waitingPulse 1.8s ease-in-out infinite' : undefined,
+    }}>
+      <style>{`
+        @keyframes waitingPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(192,132,252,0.0); }
+          50%      { box-shadow: 0 0 24px 2px rgba(192,132,252,0.35); }
+        }
+      `}</style>
+      <div style={{
+        fontSize: 10, fontWeight: 800, letterSpacing: 2,
+        color: filled ? color : '#7a7c9a',
+      }}>{label}</div>
+      <div style={{
+        fontSize: 18, fontWeight: 900, color: filled ? '#fff' : '#8a8aa5',
+        fontStyle: filled ? 'normal' : 'italic',
+        textShadow: filled ? `0 0 12px ${color}66` : 'none',
+        textAlign: 'center', maxWidth: '100%', overflow: 'hidden',
+        textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{name ?? 'awaiting...'}</div>
     </div>
   );
 }
