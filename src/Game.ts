@@ -1063,11 +1063,49 @@ const activateCard: Move<GState> = (
   });
   G.log.push(`Player ${playerID} activates ${def.name}.`);
 
-  // After pushing, give the opponent a chance to chain. If they decline (via passChain),
-  // the chain resolves. We model this by setting priorityResponse.
-  const opp = otherPlayer(ctx);
-  G.priorityResponse = { playerID: opp, allowedSpellSpeed: spellSpeed === 3 ? 3 : 2 };
+  // After pushing, give the OTHER player (not the activator) a chance to chain.
+  // The previous version derived this from ctx.currentPlayer, which broke when
+  // the non-turn player chained a response — priority would loop back to them
+  // instead of returning to the original activator.
+  const responder = playerID === '0' ? '1' : '0';
+
+  // If the responder cannot legally chain anything (no face-down S/Ts that
+  // weren't set this turn, no quick-effect monsters, no quick-play spells in
+  // hand), auto-pass to skip the meaningless prompt and resolve the chain.
+  if (!canRespondToChain(G, responder, spellSpeed)) {
+    resolveChain(G);
+    cleanUpAfterResolve(G);
+    return;
+  }
+  G.priorityResponse = { playerID: responder, allowedSpellSpeed: spellSpeed === 3 ? 3 : 2 };
 };
+
+/** True if `pid` has anything legal to add to the current chain. */
+function canRespondToChain(G: GState, pid: string, _topSpeed: 1 | 2 | 3): boolean {
+  const p = G.players[pid];
+  // Face-down Spell/Trap activatable as response (any non-counter trap or
+  // quick-play spell that wasn't set this turn).
+  for (const c of p.spellTrapZones) {
+    if (!c || c.faceUp || c.setThisTurn) continue;
+    const def = CARDS[c.defId];
+    if (!def) continue;
+    if (isTrap(def)) return true; // any trap (normal/continuous/counter)
+    if (isSpell(def) && def.subtype === 'quickplay') return true;
+  }
+  // Quick-effect monsters on the field.
+  for (const m of [...p.monsterZones, p.extraMonsterZone]) {
+    if (!m?.faceUp) continue;
+    const def = CARDS[m.defId];
+    if (isMonster(def) && def.effects?.some(e => e.timing === 'quick')) return true;
+  }
+  // Quick-play spells in hand (only on your own turn — and we're checking the
+  // responder, not necessarily the turn player; conservatively allow).
+  for (const id of p.hand) {
+    const def = CARDS[id];
+    if (isSpell(def) && def.subtype === 'quickplay') return true;
+  }
+  return false;
+}
 
 /** Opponent declines to chain — resolve the chain now (or pass back if they added a link). */
 const passChain: Move<GState> = ({ G, playerID }) => {

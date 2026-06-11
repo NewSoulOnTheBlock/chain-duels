@@ -1064,10 +1064,31 @@ export function ChainsBoard(props: Props) {
 
         {responseRequired && (
           <div style={{
-            padding: 10, background: '#facc15', color: '#000', borderRadius: 6,
-            fontWeight: 700, textAlign: 'center', marginBottom: 8,
+            padding: '12px 16px', background: '#facc15', color: '#000', borderRadius: 8,
+            fontWeight: 700, marginBottom: 8,
+            display: 'flex', gap: 12, justifyContent: 'center', alignItems: 'center',
+            flexWrap: 'wrap',
+            boxShadow: '0 0 24px rgba(250,204,21,0.55)',
           }}>
-            Your turn to respond — chain a card or pass.
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <span style={{ fontSize: 14, letterSpacing: 0.5 }}>
+                ⏳ Your turn to respond
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.8 }}>
+                Activate a face-down trap / quick-play, or pass to resolve the chain.
+              </span>
+            </div>
+            <button onClick={() => moves.passChain()}
+              style={{
+                background: '#000', color: '#facc15',
+                border: '2px solid #000',
+                padding: '10px 22px', fontWeight: 900,
+                borderRadius: 6, cursor: 'pointer',
+                fontSize: 14, letterSpacing: 1,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+              }}>
+              ⏭ PASS · RESOLVE CHAIN
+            </button>
           </div>
         )}
 
