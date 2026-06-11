@@ -107,7 +107,7 @@ function wrapWalletStandard(wallet: any, friendlyName: string): any {
       if (!f?.signTransaction) {
         // Some wallets only expose signAndSendTransaction; we can't satisfy
         // the wager flow with that because we co-sign with the escrow keypair.
-        throw new Error(`${friendlyName} does not support signTransaction. Use a different wallet for $MASTER wagers.`);
+        throw new Error(`${friendlyName} does not support signTransaction. Use a different wallet for $DUEL wagers.`);
       }
       // Wallet Standard's signTransaction takes serialized bytes for the
       // 'solana:signTransaction' feature.
@@ -317,7 +317,7 @@ export function detectSolanaWallets(): Array<{ kind: SolanaWalletKind; label: st
  */
 export async function getSolanaWallet(kind: SolanaWalletKind = 'phantom'): Promise<any> {
   const provider = getSolanaProviderRaw(kind);
-  if (!provider) throw new Error(`${labelFor(kind)} wallet required. Install the extension to wager $MASTER.`);
+  if (!provider) throw new Error(`${labelFor(kind)} wallet required. Install the extension to wager $DUEL.`);
   await robustSolanaConnect(provider, kind);
   return provider;
 }

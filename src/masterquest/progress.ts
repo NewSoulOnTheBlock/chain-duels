@@ -1,14 +1,16 @@
 // src/masterquest/progress.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Memetic Masterquest — campaign progress, persisted to localStorage.
+// Chain Duels — Golden Deck Saga: campaign progress, persisted to localStorage.
 //
-// Tracks which of the 15 Sacred Sites Sorendo has cleared, which is currently
-// available, and which read-throughs of the interludes have been completed.
+// Tracks which of the 11 Saga Sites the duellist has cleared, which is the
+// current one, and whether the epilogue has been displayed.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { SITES, TOTAL_SITES, type SiteId } from './lore';
 
-const KEY = 'mmtcg:masterquest:v1';
+// Bumped to v2 with the Golden Deck Saga restructure (15 → 11 sites with
+// completely different site ids). Old v1 saves will simply not be read.
+const KEY = 'cdtcg:saga:v2';
 
 export interface Progress {
   /** Site ids the player has beaten, in clear-order. */
@@ -63,7 +65,7 @@ export function recordClear(siteId: SiteId): Progress {
   return p;
 }
 
-/** Mark the epilogue as displayed. Called after Site 15 is shown. */
+/** Mark the epilogue as displayed. Called after Site XI is shown. */
 export function markEpilogueSeen(): Progress {
   const p = loadProgress();
   p.epilogueSeen = true;
@@ -72,7 +74,7 @@ export function markEpilogueSeen(): Progress {
 }
 
 /**
- * The next site the player can attempt. Returns undefined if the quest is
+ * The next site the player can attempt. Returns undefined if the saga is
  * fully cleared. Sites unlock in strict `index` order: the next site is the
  * one with index = clearedCount + 1.
  */
@@ -92,7 +94,7 @@ export function isCleared(siteId: SiteId, p: Progress = loadProgress()): boolean
   return p.cleared.includes(siteId);
 }
 
-/** True if all 15 sites are cleared. */
+/** True if all Saga sites are cleared. */
 export function isQuestComplete(p: Progress = loadProgress()): boolean {
   return p.cleared.length >= TOTAL_SITES;
 }

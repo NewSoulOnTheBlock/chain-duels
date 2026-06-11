@@ -154,7 +154,7 @@ export async function ixCreateMatch(args: {
 
   const ixs: TransactionInstruction[] = [];
 
-  // Ensure creator has an ATA for $MASTER (idempotent — only adds if missing).
+  // Ensure creator has an ATA for $DUEL (idempotent — only adds if missing).
   try { await getAccount(args.connection, creatorAta); }
   catch {
     ixs.push(createAssociatedTokenAccountInstruction(args.creator, creatorAta, args.creator, mint));
@@ -386,7 +386,7 @@ export async function sendIxs(
   return sig;
 }
 
-/** Convert UI $MASTER amount (e.g. 100) to base units (e.g. 100_000000n). */
+/** Convert UI $DUEL amount (e.g. 100) to base units (e.g. 100_000000n). */
 export function masterUi(n: number | bigint): bigint {
   if (typeof n === 'bigint') return n * 10n ** BigInt(MASTER_DECIMALS);
   return BigInt(Math.floor(n * 10 ** MASTER_DECIMALS));

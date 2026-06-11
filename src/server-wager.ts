@@ -1,4 +1,4 @@
-// src/server-wager.ts — server-side oracle that settles $MASTER wager matches.
+// src/server-wager.ts — server-side oracle that settles $DUEL wager matches.
 // Reads SOLANA_ORACLE_KEYPAIR (JSON byte array) + VITE_SOLANA_RPC / SOLANA_RPC
 // from env. When a wagered game ends, the server signs and sends a
 // settle_match tx with the oracle keypair.

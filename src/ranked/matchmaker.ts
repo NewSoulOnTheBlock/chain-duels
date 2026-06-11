@@ -92,7 +92,7 @@ async function onPairFound([a, b]: [RankedQueueEntry, RankedQueueEntry], region:
   let matchId: string;
   if (lobbyClient) {
     try {
-      const res = await lobbyClient.createMatch('chains-tcg', {
+      const res = await lobbyClient.createMatch('duelmasters', {
         numPlayers: 2,
         setupData: {
           ranked: true,

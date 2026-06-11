@@ -1,23 +1,23 @@
 {
-  "name": "Memetic Masters TCG",
-  "short_name": "Memetic Masters",
-  "description": "5-chain MTG-style trading card game built on boardgame.io.",
+  "name": "Chain Duels",
+  "short_name": "Chain Duels",
+  "description": "Multiplayer trading card game across 5 blockchains. NFT card packs paid in $DUEL, the Golden Deck Saga single-player campaign, ranked duels.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0a0a1e",
-  "theme_color": "#0a0a1e",
+  "background_color": "#02010a",
+  "theme_color": "#1a0f3a",
   "categories": ["games", "entertainment"],
   "icons": [
     {
-      "src": "/favicon.png",
+      "src": "/favicon.png?v=2",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/favicon.png",
+      "src": "/favicon.png?v=2",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

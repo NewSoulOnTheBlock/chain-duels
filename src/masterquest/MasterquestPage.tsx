@@ -1,15 +1,13 @@
 // src/masterquest/MasterquestPage.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// Memetic Masterquest — campaign mode UI.
+// Chain Duels — The Golden Deck Saga (single-player campaign UI).
 //
-// Renders a 100×100 SVG map of all 15 Sacred Sites arranged in three
-// concentric rings (one per Act), with travel paths between consecutive
-// sites. Visited sites glow; the current site pulses; locked sites are dim.
-//
-// Click the current site → interlude modal (pre-fight lore + "BEGIN DUEL").
-// Click a cleared site → re-read modal (post-fight lore).
-// On duel victory → post-fight interlude + "TRAVEL ONWARD" → unlock next.
-// After Site 15 → EPILOGUE.
+// Renders the painted Saga Map with 11 chapter pins drawn over it. Each pin
+// is a Site. Visited Sites glow; the current Site pulses; locked Sites are
+// dim. Click the current Site → interlude modal (pre-fight lore + "BEGIN
+// DUEL"). Click a cleared Site → re-read modal (post-fight lore). On duel
+// victory → post-fight interlude + "TRAVEL ONWARD" → unlock next. After
+// Site XI (The Summit) → EPILOGUE.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
@@ -18,7 +16,7 @@ import type { Color } from '../cards';
 import { validateDeck } from '../cards';
 import { listDecksApi, type DeckEntry } from '../profiles';
 import {
-  PROLOGUE, ACTS, SITES, EPILOGUE, INTERLUDES,
+  PROLOGUE, ACTS, SITES, TOTAL_SITES, EPILOGUE, INTERLUDES,
   mapPosOf, MAP_VIEWBOX, type SacredSite, type SiteId, type Interlude,
 } from './lore';
 import {
@@ -45,9 +43,9 @@ const CHAIN_LABEL: Record<Color, string> = {
 };
 
 const ACT_LABEL: Record<keyof typeof ACTS, string> = {
-  awakening:  'Act I — Awakening',
-  pilgrimage: 'Act II — Pilgrimage',
-  coronation: 'Act III — Coronation',
+  awakening: 'Act I — Awakening',
+  champions: 'Act II — Champions',
+  void:      'Act III — The Void',
 };
 
 // ─── Page ──────────────────────────────────────────────────────────────────
@@ -126,14 +124,14 @@ export function MasterquestPage({
   const handleTravelOnward = useCallback(() => {
     const site = postFight?.site;
     setPostFight(null);
-    if (site && site.id === 'cipher_peak') {
+    if (site && site.id === 'first_champion_summit') {
       markEpilogueSeen();
       setShowEpilogue(true);
     }
   }, [postFight]);
 
   const handleResetCampaign = useCallback(() => {
-    if (typeof window !== 'undefined' && window.confirm('Erase Masterquest progress and start again from Site 1?')) {
+    if (typeof window !== 'undefined' && window.confirm('Erase Golden Deck Saga progress and start again from Site I?')) {
       clearProgress();
       setProgress(loadProgress());
       setShowPrologue(true);
@@ -144,7 +142,7 @@ export function MasterquestPage({
   if (activeDuel) {
     return (
       <SoloClient
-        playerName={myName || 'Sorendo'}
+          playerName={myName || 'Duelist'}
         difficulty={activeDuel.site.rival.difficulty}
         mode="casual"
         playerDeckColor="sol"
@@ -173,7 +171,7 @@ export function MasterquestPage({
       }}>
         <button onClick={onBack} style={btnSecondary}>← Back</button>
         <div style={{ fontWeight: 900, fontSize: 18, letterSpacing: 2 }}>
-          🗺  MEMETIC MASTERQUEST
+          ⚔  THE GOLDEN DECK SAGA
         </div>
         <button onClick={handleResetCampaign} style={{ ...btnSecondary, fontSize: 11, opacity: 0.6 }}>
           ↻ reset
@@ -187,8 +185,8 @@ export function MasterquestPage({
       }}>
         <div style={{ fontSize: 13, letterSpacing: 1, opacity: 0.85 }}>
           {complete
-            ? '✦ THE FIVE-CHAIN CROWN IS YOURS ✦'
-            : `Sites cleared: ${progress.cleared.length} / 15${cur ? ` · Next: ${SITES.find(s => s.id === cur)?.name}` : ''}`}
+            ? '✦ THE GOLDEN DECK HAS BEEN SHATTERED ✦'
+            : `Fragments recovered: ${progress.cleared.length} / ${TOTAL_SITES}${cur ? ` · Next: ${SITES.find(s => s.id === cur)?.name}` : ''}`}
         </div>
         {complete && !showEpilogue && (
           <button onClick={() => setShowEpilogue(true)} style={{ ...btnPrimary, marginTop: 10 }}>
@@ -256,10 +254,10 @@ function MapSvg({
         borderRadius: 10, border: '1px solid #3a2f6a',
         boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
       }}
-      aria-label="Memetic Masterquest map"
+      aria-label="Chain Duels — Golden Deck Saga map"
     >
-      {/* Painted Map of the Aetherweb (drawn first, everything else overlays) */}
-      <image href="/masterquest-map.png?v=1" x={0} y={0} width={VW} height={VH}
+      {/* Painted Map of the Chain Realm (drawn first, everything else overlays) */}
+      <image href="/masterquest-map.png?v=2" x={0} y={0} width={VW} height={VH}
         preserveAspectRatio="xMidYMid slice" />
 
       {/* Travel path: faint dashed line connecting consecutive sites in clear-order */}
@@ -349,7 +347,7 @@ function toRoman(n: number): string {
   const r: Record<number, string> = {
     1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V',
     6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X',
-    11: 'XI', 12: 'XII', 13: 'XIII', 14: 'XIV', 15: 'XV',
+    11: 'XI',
   };
   return r[n] ?? String(n);
 }
@@ -361,9 +359,9 @@ function ActLegend() {
       padding: '14px 8px 0', gap: 18,
       fontSize: 11, opacity: 0.85, color: '#cfc4ff',
     }}>
-      <div>{ACT_LABEL.awakening} — Sites I–V</div>
-      <div>{ACT_LABEL.pilgrimage} — Sites VI–X</div>
-      <div>{ACT_LABEL.coronation} — Sites XI–XV</div>
+      <div>{ACT_LABEL.awakening} — Sites I–III</div>
+      <div>{ACT_LABEL.champions} — Sites IV–VI</div>
+      <div>{ACT_LABEL.void} — Sites VII–XI</div>
     </div>
   );
 }
@@ -392,11 +390,11 @@ function modalShell(children: React.ReactNode, onClose?: () => void) {
 
 function PrologueModal({ onClose }: { onClose: () => void }) {
   return modalShell(<>
-    <div style={{ fontSize: 12, opacity: 0.6, letterSpacing: 2 }}>PROLOGUE</div>
-    <h2 style={{ marginTop: 4, marginBottom: 14, fontSize: 22 }}>Sorendo the Unhoused</h2>
+    <div style={{ fontSize: 12, opacity: 0.6, letterSpacing: 2 }}>PROLOGUE · CHAPTER I</div>
+    <h2 style={{ marginTop: 4, marginBottom: 14, fontSize: 22 }}>The First Draw</h2>
     <PreservedText text={PROLOGUE} />
     <div style={{ marginTop: 18, textAlign: 'right' }}>
-      <button onClick={onClose} style={btnPrimary}>Begin the Quest →</button>
+      <button onClick={onClose} style={btnPrimary}>Begin the Saga →</button>
     </div>
   </>, onClose);
 }
@@ -404,7 +402,7 @@ function PrologueModal({ onClose }: { onClose: () => void }) {
 function EpilogueModal({ onClose }: { onClose: () => void }) {
   return modalShell(<>
     <div style={{ fontSize: 12, opacity: 0.6, letterSpacing: 2, color: '#ffe066' }}>EPILOGUE</div>
-    <h2 style={{ marginTop: 4, marginBottom: 14, fontSize: 22 }}>The Five-Chain Crown</h2>
+    <h2 style={{ marginTop: 4, marginBottom: 14, fontSize: 22 }}>The Shattered Golden Deck</h2>
     <PreservedText text={EPILOGUE} />
     <div style={{ marginTop: 18, textAlign: 'right' }}>
       <button onClick={onClose} style={btnPrimary}>Close</button>
@@ -423,7 +421,7 @@ function SiteModal({
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
       <div>
         <div style={{ fontSize: 11, opacity: 0.7, letterSpacing: 2 }}>
-          SITE {site.index} / 15 · {ACT_LABEL[site.act]}
+          SITE {site.index} / {TOTAL_SITES} · {ACT_LABEL[site.act]}
         </div>
         <h2 style={{ margin: '4px 0 6px', fontSize: 22 }}>{site.name}</h2>
         <ChainPill chain={site.chain} />
@@ -517,7 +515,7 @@ function PostFightModal({
 }: { site: SacredSite; interlude: Interlude; onTravelOnward: () => void }) {
   return modalShell(<>
     <div style={{ fontSize: 12, opacity: 0.7, letterSpacing: 2, color: '#a5ffb0' }}>
-      VICTORY · SITE {site.index} / 15
+      VICTORY · SITE {site.index} / {TOTAL_SITES}
     </div>
     <h2 style={{ marginTop: 4, marginBottom: 12, fontSize: 22 }}>{site.name}</h2>
 
@@ -533,7 +531,7 @@ function PostFightModal({
 
     <div style={{ marginTop: 22, textAlign: 'right' }}>
       <button onClick={onTravelOnward} style={btnPrimary}>
-        {site.id === 'cipher_peak' ? '✦  Reforge the Aetherweb' : 'Travel Onward →'}
+        {site.id === 'first_champion_summit' ? '✦  Witness the Epilogue' : 'Travel Onward →'}
       </button>
     </div>
   </>);

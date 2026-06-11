@@ -17,7 +17,7 @@ export function defaultSeason(now = Date.now(), durationDays = DEFAULT_DURATION_
     softResetFactor: DEFAULT_SOFT_RESET,
     rewardDefinitions: {
       champion: {
-        prize: '$1,000 of $MASTER',
+        prize: '$1,000 of $DUEL',
         title: 'Season Champion',
         description: 'Awarded to the #1 player on the Season Leaderboard at season end.',
       },

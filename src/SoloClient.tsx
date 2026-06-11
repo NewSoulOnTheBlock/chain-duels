@@ -39,7 +39,7 @@ export function SoloClient({
   playerDeckColor: Color;
   /** If provided (and length > 0), used instead of STARTER_DECKS[playerDeckColor]. */
   customDeck?: string[] | null;
-  /** If provided, overrides the daily/random bot color (used by Masterquest). */
+  /** If provided, overrides the daily/random bot color (used by the Golden Deck Saga). */
   botDeckColor?: Color | null;
   /** Optional custom label shown beside the bot name (e.g. boss title). */
   matchLabel?: string | null;

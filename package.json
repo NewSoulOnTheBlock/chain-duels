@@ -1,7 +1,8 @@
 {
-  "name": "chains-tcg",
-  "version": "0.1.0",
+  "name": "chain-duels",
+  "version": "0.2.0",
   "private": true,
+  "description": "Chain Duels — multiplayer TCG across 5 blockchains, with NFT card packs paid in $DUEL and the Golden Deck Saga single-player campaign.",
   "scripts": {
     "dev": "vite",
     "dev:server": "tsx watch src/server.ts",

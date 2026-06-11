@@ -1,9 +1,9 @@
-// Custodial $MASTER wager client — alternative to the on-chain Anchor program.
+// Custodial $DUEL wager client — alternative to the on-chain Anchor program.
 //
 // Flow:
 //   1. createMatch / joinMatch calls `requestWagerIntent(matchID, playerID, amount)`
 //      to learn the escrow pubkey + memo string the server expects.
-//   2. We build a single tx that (a) SPL-transfers `amount` $MASTER from the
+//   2. We build a single tx that (a) SPL-transfers `amount` $DUEL from the
 //      player's ATA to the escrow's ATA, and (b) appends a Memo with
 //      `mm:<matchID>:<playerID>` so the server can attribute the deposit even
 //      across restarts. Phantom signs and we send it.
@@ -68,7 +68,7 @@ export async function depositCustodialWager(args: {
   if (!wallet.publicKey) throw new Error('Wallet not connected');
   const mint = new PublicKey(intent.mint);
   const escrow = new PublicKey(intent.escrowPubkey);
-  // $MASTER (pump.fun) is a Token-2022 mint — all ATA derivations + ixs
+  // $DUEL (pump.fun) is a Token-2022 mint — all ATA derivations + ixs
   // must specify the 2022 program id, otherwise we look up the wrong ATA
   // (and would get "no MASTER ATA" errors even when the user holds plenty).
   const fromAta = await getAssociatedTokenAddress(
@@ -95,14 +95,14 @@ export async function depositCustodialWager(args: {
     const acct = await getAccount(connection, fromAta, undefined, TOKEN_2022_PROGRAM_ID);
     foundBalance = acct.amount >= BigInt(intent.amount);
     if (!foundBalance) {
-      throw new Error(`Your $MASTER balance is too low for this wager (need ${intent.amount} base units, have ${acct.amount.toString()}).`);
+      throw new Error(`Your $DUEL balance is too low for this wager (need ${intent.amount} base units, have ${acct.amount.toString()}).`);
     }
   } catch (e: any) {
     if (e instanceof TokenAccountNotFoundError || e instanceof TokenInvalidAccountOwnerError) {
       const parsed = await connection.getParsedTokenAccountsByOwner(
         wallet.publicKey, { mint, programId: TOKEN_2022_PROGRAM_ID },
       ).catch(err => {
-        throw new Error(`Could not look up your $MASTER token accounts (RPC error: ${err?.message ?? err}). Please try again.`);
+        throw new Error(`Could not look up your $DUEL token accounts (RPC error: ${err?.message ?? err}). Please try again.`);
       });
       const need = BigInt(intent.amount);
       const hit = parsed.value.find(p => {
@@ -115,20 +115,20 @@ export async function depositCustodialWager(args: {
           try { return acc + (raw ? BigInt(raw) : 0n); } catch { return acc; }
         }, 0n);
         if (total === 0n) {
-          throw new Error('This wallet has no $MASTER. Acquire some first, or connect a different wallet.');
+          throw new Error('This wallet has no $DUEL. Acquire some first, or connect a different wallet.');
         }
-        throw new Error(`This wallet does not have a single $MASTER account with enough balance for this wager (need ${intent.amount} base units, max account balance found = ${total.toString()}). Consolidate balances or lower the wager.`);
+        throw new Error(`This wallet does not have a single $DUEL account with enough balance for this wager (need ${intent.amount} base units, max account balance found = ${total.toString()}). Consolidate balances or lower the wager.`);
       }
       payerAccount = hit.pubkey;
       foundBalance = true;
     } else if (/balance is too low/i.test(String(e?.message))) {
       throw e;
     } else {
-      throw new Error(`Could not verify your $MASTER balance (RPC error: ${e?.message ?? e}). If this persists, set VITE_SOLANA_RPC to a private RPC endpoint.`);
+      throw new Error(`Could not verify your $DUEL balance (RPC error: ${e?.message ?? e}). If this persists, set VITE_SOLANA_RPC to a private RPC endpoint.`);
     }
   }
   if (!foundBalance) {
-    throw new Error('This wallet has no $MASTER. Acquire some first, or connect a different wallet.');
+    throw new Error('This wallet has no $DUEL. Acquire some first, or connect a different wallet.');
   }
 
   ixs.push(createTransferInstruction(
@@ -189,7 +189,7 @@ export async function depositCustodialWager(args: {
   );
 }
 
-/** Convert UI $MASTER amount to base-unit string (avoids JSON bigint pain). */
+/** Convert UI $DUEL amount to base-unit string (avoids JSON bigint pain). */
 export function masterUiToString(amount: number): string {
   return masterUi(amount).toString();
 }

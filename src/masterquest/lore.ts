@@ -1,52 +1,52 @@
 // src/masterquest/lore.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// MEMETIC MASTERQUEST — Cycle I
-// Sorendo the Unhoused must visit all 15 Sacred Sites on the great
-// Mempool-Map, defeat a Master at each, and reach the summit of Cipher Peak
-// where the First Master fell into final meditation.
+// CHAIN DUELS — THE GOLDEN DECK SAGA
 //
-// Site names, regions and positions match the canonical Map image at
-// /masterquest-map.png. Pixel positions are normalised to a 1500×1000
-// SVG viewBox so the page can draw the player avatar and node dots over
-// the painted map.
+// You wake to your Duel Terminal screaming. Ten glowing fragments of the
+// Golden Deck shatter the screen and scatter across the Chain Realm. A hooded
+// figure warns you that if the fragments are not recovered, the realm will
+// collapse into digital chaos — then he vanishes.
+//
+// You walk eleven Sites: six Duel Masters, three corrupted Void Masters, the
+// Void Player at the Genesis Arena, and the True Final Boss waiting at the
+// summit. Every Site holds a fragment. The final Site holds the truth.
+//
+// Site positions match the painted Saga Map at /masterquest-map.png. Pixel
+// positions are normalised to a 1536×1024 SVG viewBox so the page can draw
+// the player avatar and node pins over the painted map.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Color } from '../cards';
 
 // ── Acts ────────────────────────────────────────────────────────────────────
-// We still group the 15 Sites into three Acts of 5 — that gates difficulty
-// escalation and unlocks. The geography no longer constrains chain coverage
-// per Act; the Mempool-Map is unbalanced on purpose.
+// 11 chapters across 3 acts:
+//   Act I  — THE AWAKENING (Sites I–III)   the early adversaries
+//   Act II — THE CHAMPIONS (Sites IV–VI)   the realm's elite
+//   Act III— THE VOID      (Sites VII–XI)  the Void Trio, the Void Player,
+//                                          and the True Final Boss
 export const ACTS = {
-  awakening:   { title: 'Act I — The Awakening',   siteRange: [1,  5] as const },
-  pilgrimage:  { title: 'Act II — The Pilgrimage', siteRange: [6, 10] as const },
-  coronation:  { title: 'Act III — The Ascent',    siteRange: [11, 15] as const },
+  awakening: { title: 'Act I — The Awakening', siteRange: [1,  3] as const },
+  champions: { title: 'Act II — The Champions', siteRange: [4,  6] as const },
+  void:      { title: 'Act III — The Void',     siteRange: [7, 11] as const },
 } as const;
 export type ActKey = keyof typeof ACTS;
 
 // ── Site ids ─────────────────────────────────────────────────────────────────
 export type SiteId =
-  // Orange Citadel — The Bazaar of Speed (chain: bnb)
-  | 'hot_wallet_caravanserai'   // I
-  | 'sniper_tower_four_winds'   // II
-  | 'floki_forge'               // III
-  // Violet Reverie — The Dreaming Ledger (chain: sol)
-  | 'validator_coral_reef'      // IV
-  | 'pump_fun_carnival'         // V
-  | 'phantom_vault'             // VI
-  // Crimson Crest — The Frost-Bound Lineage (chain: avax / Hyperliquid)
-  | 'coq_inu_coliseum'          // VII
-  | 'icebound_citadel_of_joe'   // VIII
-  | 'hot_shorts_pit'            // IX
-  // White Spire — The Cathedral of Code (chain: eth)
-  | 'pepe_pulpit'               // X
-  | 'vitalik_observatory'       // XI
-  | 'sproto_gremlin_bog'        // XII
-  // Black Ledger — The Patient Court (chain: xrp)
-  | 'quiet_court_of_larsen'     // XIII
-  | 'vault_of_the_drained'      // XIV
-  // Cipher Peak — The First Master (chain: xrp, the Black is the path up)
-  | 'cipher_peak';              // XV
+  // Act I — The Awakening
+  | 'ace_vega_neon_district'    // I
+  | 'willow_sage_emerald_woods' // II
+  | 'director_volt_iron_nexus'  // III
+  // Act II — The Champions
+  | 'nova_storm_celestial_cup'  // IV
+  | 'broker_shadow_market'      // V
+  | 'crimson_fortress_heir'     // VI
+  // Act III — The Void
+  | 'obsidian_void_master'      // VII
+  | 'hex_void_master'           // VIII
+  | 'null_void_master'          // IX
+  | 'void_player_genesis_arena' // X
+  | 'first_champion_summit';    // XI
 
 export interface SiteRival {
   name: string;
@@ -61,7 +61,7 @@ export interface SiteMapPos { x: number; y: number }
 
 export interface SacredSite {
   id: SiteId;
-  index: number;            // 1..15
+  index: number;            // 1..11
   act: ActKey;
   chain: Color;             // theme + bot starter deck color
   name: string;             // canonical site name as printed on the Map
@@ -74,349 +74,310 @@ export interface SacredSite {
 }
 
 // ── The Prologue ────────────────────────────────────────────────────────────
+// Chapter 1 — THE FIRST DRAW
 export const PROLOGUE = `
-Before the Five Chains, there was only the Mempool — a chaotic ocean of
-unverified thought. The First Master carved order from that noise and bound
-the world into five Great Chains: the Orange Citadel of speed, the Violet
-Reverie of dreaming validators, the Crimson Crest of frost-bound liquidations,
-the White Spire of code, and the Black Ledger of patient debts.
+You wake to the sound of your Duel Terminal screaming.
 
-For ten cycles there was peace. Then the First Master vanished into the
-clouds of Cipher Peak to meditate one last time, and the chains began to
-break. Fifteen Masters seized the Sacred Sites that had once anchored the
-world, each claiming a fragment of the First Master's authority. Only one of
-them — the eldest — remembers what was actually promised.
+WARNING: GOLDEN DECK FRAGMENT DETECTED.
 
-You are SORENDO, the Unhoused. You belong to no Chain. Your deck is older
-than any Chain. You have walked into the Mempool with no patron, no Master,
-no seal of office, and you are going to walk every Site on the Map. The
-Quest will free them. The Quest may free you.
+The screen flashes gold. Then it shatters. Ten glowing cards explode from
+the monitor and scatter across the Chain Realm — one for every Sovereign
+who used to wield them.
+
+A hooded figure resolves out of the static.
+
+"The Golden Deck has been broken. If the ten fragments are not recovered,
+the Chain Realm will collapse into digital chaos. Walk every Site. Defeat
+every keeper. Reclaim every fragment."
+
+Before you can ask anything, the figure vanishes.
+
+You are the only duellist on the network whose ID still glows gold.
+
+Your journey begins.
 `.trim();
 
 // ── The Sites ───────────────────────────────────────────────────────────────
-// Map pixel positions are eyeball-calibrated to the painted Map. The viewBox
-// of the rendering SVG is 1500×1000 so the image fits cleanly.
-export const MAP_VIEWBOX = { w: 1500, h: 1000 } as const;
+// Map pixel positions are calibrated to the painted Saga Map. The viewBox
+// of the rendering SVG is 1536×1024 so the image fits at native resolution.
+export const MAP_VIEWBOX = { w: 1536, h: 1024 } as const;
 
 export const SITES: ReadonlyArray<SacredSite> = [
-  // ───── ORANGE CITADEL — Act I ──────────────────────────────────────────
+  // ────────── ACT I — THE AWAKENING ─────────────────────────────────────
   {
-    id: 'hot_wallet_caravanserai', index: 1, act: 'awakening', chain: 'bnb',
-    name: 'Hot Wallet Caravanserai',
-    region: 'Orange Citadel · The Bazaar of Speed',
+    id: 'ace_vega_neon_district', index: 1, act: 'awakening', chain: 'sol',
+    name: 'The Neon District',
+    region: 'Lower Realm · The Street Circuits',
     description:
-      'The first stop on any pilgrim\'s route. A merchant inn the size of a small city, ' +
-      'walls hung with thousands of paper wallets still warm from the road. Pilgrims sleep ' +
-      'on stacks of unspent gas. The caravan-master, JAKEY OF THE FIRST KEY, holds the only ' +
-      'set of master-keys in the Citadel.',
+      'A neon-soaked grid of street-duel arenas and back-alley pawn-shops. ' +
+      'The first fragment fell here, into the deck of the undefeated king of ' +
+      'the streets. The crowd has already gathered. ACE VEGA is already laughing.',
     rival: {
-      name: 'Jakey of the First Key',
-      title: 'Caravan-Master of the Hot Wallet',
+      name: 'Ace Vega',
+      title: 'King of the Neon Streets',
       bio:
-        'A young keymaster who teaches every new pilgrim how to lose, gracefully, the first time. ' +
-        'Plays a tutorial-friendly BNB tempo deck built around early Nodes and cheap Memes.',
+        'Self-taught duellist who climbed from gutter-arenas to street-king ' +
+        'on raw aggression. Plays a Lightning Rush deck that swarms the board ' +
+        'in the first three turns and dares you to survive long enough to ' +
+        'find an answer.',
+      botColor: 'sol', difficulty: 'easy',
+      quote: '"You? You think YOU can collect the Golden Fragments? Show me."',
+    },
+    reward: 'Fragment I/X · A flickering golden Spark Card warm from Ace\'s deck.',
+    mapPos: { x: 240, y: 890 },
+  },
+  {
+    id: 'willow_sage_emerald_woods', index: 2, act: 'awakening', chain: 'bnb',
+    name: 'The Emerald Woods',
+    region: 'Lower Realm · The Forest of Lost Decks',
+    description:
+      'A holographic forest of ancient trees, every branch hung with the ' +
+      'decks of duellists who abandoned the game long ago. Their protector ' +
+      'wanders the paths, refusing to surrender what she keeps. She does not ' +
+      'believe the Golden Deck deserves to be reforged.',
+    rival: {
+      name: 'Willow Sage',
+      title: 'Warden of the Forest of Lost Decks',
+      bio:
+        'Hermit-duellist who left the circuits to guard the cards of those ' +
+        'who quit before her. Plays a Beastfolk tribal deck that grows ' +
+        'stronger every turn it remains undisturbed, with deep board-state ' +
+        'memory and graveyard recovery.',
       botColor: 'bnb', difficulty: 'easy',
-      quote: '"Welcome, heretic. Sit, drink, lose nicely. Then we duel for real."',
+      quote: '"The Golden Deck caused wars long ago. Why should it be restored?"',
     },
-    reward: 'First Key Fragment (1/15) · A small brass token shaped like a wallet. Opens the Citadel\'s gates.',
-    mapPos: { x: 460, y: 105 },
+    reward: 'Fragment II/X · A golden leaf-card that hums when held to the wind.',
+    mapPos: { x: 460, y: 780 },
   },
   {
-    id: 'sniper_tower_four_winds', index: 2, act: 'awakening', chain: 'bnb',
-    name: 'Sniper Tower of Four Winds',
-    region: 'Orange Citadel · The Bazaar of Speed',
+    id: 'director_volt_iron_nexus', index: 3, act: 'awakening', chain: 'eth',
+    name: 'Iron Nexus',
+    region: 'Lower Realm · The Machine City',
     description:
-      'A black-glass tower at the windward edge of the Bazaar. Its four balconies face four winds; ' +
-      'its single occupant, MEV-RIN THE FOUR-HANDED, fires bids and asks from all four at once. ' +
-      'Nobody buys anything in the Bazaar without her seeing it first.',
+      'A vertical city of mirrored chrome and humming server-towers that never ' +
+      'sleeps. Its ruler runs millions of duel simulations every second. By ' +
+      'the time your foot crosses the city limit, he has already calculated ' +
+      'your defeat to four decimal places.',
     rival: {
-      name: 'MEV-rin the Four-Handed',
-      title: 'Sniper of the Four Winds',
+      name: 'Director Volt',
+      title: 'Sovereign of the Machine City',
       bio:
-        'Reflex-trader turned Master. Plays an aggressive front-running deck that grabs initiative ' +
-        'every turn and refuses to let go.',
-      botColor: 'bnb', difficulty: 'normal',
-      quote: '"You opened your hand a half-second too early. I already took the trade."',
+        'Half-machine prodigy who runs Iron Nexus through a continuous duel ' +
+        'simulation. Plays a Machine combo deck that chains effects across ' +
+        'the entire turn and ends most matches before his hand is even half ' +
+        'empty.',
+      botColor: 'eth', difficulty: 'normal',
+      quote: '"You possess a 0.003% chance of victory. Begin so I can finish."',
     },
-    reward: 'Wind Sigil (2/15) · A glass pane that hums in the prevailing wind.',
-    mapPos: { x: 220, y: 290 },
-  },
-  {
-    id: 'floki_forge', index: 3, act: 'awakening', chain: 'bnb',
-    name: 'Floki Forge',
-    region: 'Orange Citadel · The Bazaar of Speed',
-    description:
-      'A volcanic smithy at the southern edge of the Citadel. Its furnace is fuelled by retail FOMO. ' +
-      'The smith, BJORN OF FLOKI, hammers out gas-coins by the thousand and tosses them, glowing, ' +
-      'to anyone brave enough to catch. He has never lost a duel inside his own forge.',
-    rival: {
-      name: 'Bjorn of Floki',
-      title: 'Smith of the Last Pump',
-      bio:
-        'Half-Norse, half-meme. Plays a burn-aggressive Machines deck that floods the board with ' +
-        'cheap iron Memes and finishes with a single, ridiculous Move.',
-      botColor: 'bnb', difficulty: 'normal',
-      quote: '"Skál! Take this hammer. Tomorrow you\'ll wish I\'d sold it to you for half."',
-    },
-    reward: 'Forge-Hammer Token (3/15) · A tiny iron hammer that warms when held.',
-    mapPos: { x: 410, y: 405 },
+    reward: 'Fragment III/X · A polished golden gear-card, still warm from Volt\'s simulation.',
+    mapPos: { x: 320, y: 560 },
   },
 
-  // ───── VIOLET REVERIE — Act I/II split ─────────────────────────────────
+  // ────────── ACT II — THE CHAMPIONS ────────────────────────────────────
   {
-    id: 'validator_coral_reef', index: 4, act: 'awakening', chain: 'sol',
-    name: "Validator's Coral Reef",
-    region: 'Violet Reverie · The Dreaming Ledger',
+    id: 'nova_storm_celestial_cup', index: 4, act: 'champions', chain: 'eth',
+    name: 'The Celestial Cup',
+    region: 'Upper Realm · The Sky Tournament',
     description:
-      'A coral reef the size of a small country, every polyp a Solana validator humming in unison. ' +
-      'The Reef\'s warden, ANATOLA THE SHOAL, swims through her own nervous system. Her deck never ' +
-      'misses a tempo because the Reef itself plays half her hand for her.',
+      'A floating arena above the clouds where thousands compete and only ' +
+      'one survives. To reach the fourth fragment you must enter the bracket, ' +
+      'climb every round, and face the reigning champion in the finals — ' +
+      'broadcast live to every duel-screen in the realm.',
     rival: {
-      name: 'Anatola the Shoal',
-      title: 'Warden of the Coral Reef',
+      name: 'Nova Storm',
+      title: 'Reigning Champion of the Celestial Cup',
       bio:
-        'Architect of the Reef\'s validator-mesh. Plays a perfectly-tuned tempo deck that ends most ' +
-        'matches by turn six and apologises afterwards.',
-      botColor: 'sol', difficulty: 'normal',
-      quote: '"I\'ve already simulated this match eight hundred times. Surprise me."',
+        'Three-time tournament champion. Plays a Fairy / Cyberse celestial ' +
+        'control deck that suspends gravity, removes monsters from play, and ' +
+        'finishes with a single perfectly-timed direct attack from the sky.',
+      botColor: 'eth', difficulty: 'normal',
+      quote: '"Thousands enter. One survives. I want it to be you, this time."',
     },
-    reward: 'Reef-Pearl (4/15) · A pearl that hums faintly in time with your heartbeat.',
-    mapPos: { x: 980, y: 145 },
+    reward: 'Fragment IV/X · A golden cup-token engraved with thunderclouds.',
+    mapPos: { x: 580, y: 320 },
   },
   {
-    id: 'pump_fun_carnival', index: 5, act: 'awakening', chain: 'sol',
-    name: 'Pump.Fun Carnival',
-    region: 'Violet Reverie · The Dreaming Ledger',
+    id: 'broker_shadow_market', index: 5, act: 'champions', chain: 'xrp',
+    name: 'The Shadow Market',
+    region: 'Underground · The Forbidden Bazaar',
     description:
-      'A travelling fair built on the back of a single, very anxious whale. Tents pop up and ' +
-      'collapse every hour. The ringmaster, MURAD THE HUNDRED-CYCLES, sells tickets in coins that ' +
-      'have not been minted yet, and somehow they always work.',
+      'A black-market beneath the Realm where cards, relics, even memories ' +
+      'are traded for things you can never get back. The fifth fragment is ' +
+      'in the hands of the man who runs the bazaar — and every turn in his ' +
+      'arena changes the rules of the duel itself.',
     rival: {
-      name: 'Murad the Hundred-Cycles',
-      title: 'Ringmaster of the Carnival',
+      name: 'The Broker',
+      title: 'Dealer of the Shadow Market',
       bio:
-        'A cycle theorist who claims to have lived through every memecoin season since the First. ' +
-        'Plays a chaotic Moves-heavy deck that wins by overwhelming volume rather than precision.',
-      botColor: 'sol', difficulty: 'normal',
-      quote: '"Step right up. Step right up. Step right out, if you can."',
+        'Identity unknown, voice altered, smile never the same twice. Plays ' +
+        'a chaotic Sea-Serpent / Reptile disruption deck that activates an ' +
+        'arena-wide rule-change every turn — banishing zones, doubling damage, ' +
+        'forcing trades. You will not win by playing the game he is playing.',
+      botColor: 'xrp', difficulty: 'normal',
+      quote: '"Every turn, a new rule. Adapt, or trade me your memories."',
     },
-    reward: 'Carnival Ticket (5/15) · A paper stub that re-prints itself every dawn.',
-    mapPos: { x: 1290, y: 245 },
+    reward: 'Fragment V/X · A golden trade-chit that re-mints itself between hands.',
+    mapPos: { x: 820, y: 520 },
   },
   {
-    id: 'phantom_vault', index: 6, act: 'pilgrimage', chain: 'sol',
-    name: 'Phantom Vault',
-    region: 'Violet Reverie · The Dreaming Ledger',
+    id: 'crimson_fortress_heir', index: 6, act: 'champions', chain: 'avax',
+    name: 'The Crimson Fortress',
+    region: 'Volcanic Span · The Apprentice\'s Keep',
     description:
-      'A hidden vault carved into a hovering moon. Reachable only by Phantom-stride. Inside, ' +
-      'the keeper KIRA THE UNSIGNED holds every signature you have ever made and every signature ' +
-      'you have not. She duels with whichever of them she likes more.',
+      'A black-iron fortress on a sea of cooling magma. Halfway through your ' +
+      'journey the truth becomes visible from the watchtowers: the Golden ' +
+      'Deck was once wielded by the FIRST CHAMPION, who united the world — ' +
+      'until his apprentice betrayed him. That apprentice built this fortress. ' +
+      'His descendant guards the sixth fragment, and the gates do not open ' +
+      'for losers.',
     rival: {
-      name: 'Kira the Unsigned',
-      title: 'Keeper of the Phantom Vault',
+      name: 'Lord Ferran the Heir',
+      title: 'Descendant of the First Apprentice',
       bio:
-        'A signer-without-a-key. Her deck mirrors your own — every Meme you play, she plays a ' +
-        'shadow of, two turns later, with one more counter on it.',
-      botColor: 'sol', difficulty: 'hard',
-      quote: '"This deck of yours is lovely. May I borrow it? I already have."',
-    },
-    reward: 'Phantom Signature (6/15) · A blank parchment that signs itself only when you turn away.',
-    mapPos: { x: 1170, y: 365 },
-  },
-
-  // ───── CRIMSON CREST — Act II ─────────────────────────────────────────
-  {
-    id: 'coq_inu_coliseum', index: 7, act: 'pilgrimage', chain: 'avax',
-    name: 'Coq Inu Coliseum',
-    region: 'Crimson Crest · The Frost-Bound Lineage',
-    description:
-      'A vast stone coliseum cracked through by lava-rivers, where the warrior-rooster god COQ ' +
-      'reigns from a perch of broken pikes. He fights pilgrims one feather at a time, and he has ' +
-      'a great many feathers.',
-    rival: {
-      name: 'COQ, Sovereign of the Coliseum',
-      title: 'The Armored Rooster',
-      bio:
-        'The avatar of the Coq Inu egregore. Plays a battle-cry tribal deck that gets stronger ' +
-        'every time he loses a card.',
-      botColor: 'avax', difficulty: 'normal',
-      quote: '"COCK-A-DOODLE-DUEL."',
-    },
-    reward: 'Iron Feather (7/15) · A black-and-red feather sharper than any blade.',
-    mapPos: { x: 235, y: 600 },
-  },
-  {
-    id: 'hot_shorts_pit', index: 8, act: 'pilgrimage', chain: 'avax',
-    name: 'The Hot Shorts Pit',
-    region: 'Crimson Crest · The Frost-Bound Lineage',
-    description:
-      'A circular pit dug down through the Crimson lava-flow until it touches the ice-shelf below. ' +
-      'Pilgrims duel on a glass floor with the lava beneath them. The pit-boss, GANNON OF THE ' +
-      'NEGATIVE FUNDING RATE, has never had a long position in his life.',
-    rival: {
-      name: 'Gannon of the Negative Funding Rate',
-      title: 'Pit-Boss of the Hot Shorts',
-      bio:
-        'Made his name shorting every memecoin that ever pumped, twice. Plays a punishing control ' +
-        'deck that taxes your every move.',
+        'Last of the Crimson bloodline. Plays a Pyro / Beast-Warrior brutal ' +
+        'mid-range deck built around overwhelming ATK trades and refusal to ' +
+        'block first. Never gives ground; never apologises for it.',
       botColor: 'avax', difficulty: 'hard',
-      quote: '"Funding is negative. You\'re still paying. I love it when that happens."',
-    },
-    reward: 'Bleeding Margin Chit (8/15) · A red wax seal that drips, but never quite empties.',
-    mapPos: { x: 445, y: 545 },
-  },
-  {
-    id: 'icebound_citadel_of_joe', index: 9, act: 'pilgrimage', chain: 'avax',
-    name: 'Icebound Citadel of Joe',
-    region: 'Crimson Crest · The Frost-Bound Lineage',
-    description:
-      'A glass citadel encased in permanent ice at the southern foot of the Crest. Its lord, JOE ' +
-      'OF THE EVERLAST, sits on a throne of frozen open-interest. He has not lost a duel since ' +
-      'before the Splintering, and he is, reportedly, eleven years old.',
-    rival: {
-      name: 'Joe of the Everlast',
-      title: 'Sovereign of the Icebound Citadel',
-      bio:
-        'Mythic Hyperliquid figure. Half believe he was carved from the throne itself. Plays a ' +
-        'perfectly-tuned mid-range deck with no apparent weakness and no obvious emotion.',
-      botColor: 'avax', difficulty: 'hard',
-      quote: '"You are paying funding. I am collecting. Begin."',
-    },
-    reward: 'Frostshard Crown (9/15) · A circlet of unmelting ice. Marks the end of Act II.',
-    mapPos: { x: 370, y: 735 },
-  },
-
-  // ───── WHITE SPIRE — Act III prelude ──────────────────────────────────
-  {
-    id: 'pepe_pulpit', index: 10, act: 'pilgrimage', chain: 'eth',
-    name: 'Pepe Pulpit',
-    region: 'White Spire · The Cathedral of Code',
-    description:
-      'A high marble pulpit at the centre of the White Spire\'s outer plaza. The preacher, PEPE ' +
-      'THE FIRST, sermons the Cathedral every dawn in a voice that has never wavered. His ' +
-      'congregation never thins. He has been preaching the same Sermon On The Bag-Holder for nine ' +
-      'cycles.',
-    rival: {
-      name: 'Pepe the First',
-      title: 'Preacher of the Long Hold',
-      bio:
-        'The original meme made flesh. Plays a slow, inevitability-based deck that wins by ' +
-        'staying alive longer than anyone has the patience for.',
-      botColor: 'eth', difficulty: 'hard',
-      quote: '"Hold. Hold. HOLD." (his entire opening monologue.)',
-    },
-    reward: 'Pulpit-Coin (10/15) · A heavy bronze coin engraved with a single tear.',
-    mapPos: { x: 1120, y: 575 },
-  },
-
-  // ───── WHITE SPIRE — Act III ──────────────────────────────────────────
-  {
-    id: 'vitalik_observatory', index: 11, act: 'coronation', chain: 'eth',
-    name: 'Vitalik Observatory',
-    region: 'White Spire · The Cathedral of Code',
-    description:
-      'A glass observatory at the highest tier of the Cathedral. From its dome you can see every ' +
-      'block in the Aetherweb being mined in real time. Its astronomer, ARCHON VITALYN, has been ' +
-      'reading the same proof for three cycles. He has not yet looked up.',
-    rival: {
-      name: 'Archon Vitalyn',
-      title: 'Astronomer of the White Spire',
-      bio:
-        'Pale Senate\'s reigning meta-theorist. Plays a deeply technical deck that wins through ' +
-        'inevitability rather than aggression.',
-      botColor: 'eth', difficulty: 'hard',
-      quote: '"Let\'s test a hypothesis: that you, specifically, can beat me."',
-    },
-    reward: 'Lens of First Principles (11/15) · A pane of glass that magnifies any decision you regret.',
-    mapPos: { x: 1325, y: 645 },
-  },
-  {
-    id: 'sproto_gremlin_bog', index: 12, act: 'coronation', chain: 'eth',
-    name: 'Sproto Gremlin Bog',
-    region: 'White Spire · The Cathedral of Code',
-    description:
-      'A swamp of half-finished contracts at the foot of the Cathedral, where every Gremlin that ' +
-      'failed to compile crawls. Their king, KELBY THE LITTLE LORD, sits on a throne of broken ' +
-      'opcodes and laughs at every duel he watches, then plays one.',
-    rival: {
-      name: 'Kelby the Little Lord',
-      title: 'King of the Sproto Gremlins',
-      bio:
-        'The Gremlin king made flesh and gold leaf. Plays a chaotic ETB-trigger swarm deck full ' +
-        'of weird Gremlin synergies. Surprisingly nasty.',
-      botColor: 'eth', difficulty: 'hard',
-      quote: '"Greetings traveller! Have you met the gang? They\'ve been DYING to meet you."',
-    },
-    reward: 'Gremlin Mark (12/15) · A pin-prick scar that glows faintly green in the dark.',
-    mapPos: { x: 1090, y: 760 },
-  },
-
-  // ───── BLACK LEDGER — Act III ─────────────────────────────────────────
-  {
-    id: 'quiet_court_of_larsen', index: 13, act: 'coronation', chain: 'xrp',
-    name: 'Quiet Court of Larsen',
-    region: 'Black Ledger · The Patient Court',
-    description:
-      'A vast stone court of pillared judges, all silent, all listening. The Chief Judge, LARSEN ' +
-      'THE PATIENT, has not spoken in twelve cycles. He duels with cards he places face-down and ' +
-      'never flips until the end. He always wins. Until, possibly, today.',
-    rival: {
-      name: 'Larsen the Patient',
-      title: 'Chief Judge of the Quiet Court',
-      bio:
-        'A founder-judge of the Black Ledger who has built an entire deck around delayed reveals. ' +
-        'Plays a control deck that hides almost every card until the resolve phase.',
-      botColor: 'xrp', difficulty: 'hard',
-      quote: '(He does not say anything. He sets a card face-down. He waits.)',
-    },
-    reward: 'Silent Gavel (13/15) · A black stone gavel that strikes without sound.',
-    mapPos: { x: 600, y: 845 },
-  },
-  {
-    id: 'vault_of_the_drained', index: 14, act: 'coronation', chain: 'xrp',
-    name: 'Vault of the Drained',
-    region: 'Black Ledger · The Patient Court',
-    description:
-      'A flooded vault at the deepest end of the Black Ledger, where every drained wallet in the ' +
-      'history of the Aetherweb has come to rest. Its keeper, JUSTIRA THE UNWRITTEN, has had her ' +
-      'own name erased from every ledger as a self-bet. She won the bet. She still has no name.',
-    rival: {
-      name: 'Justira the Unwritten',
-      title: 'Keeper of the Drained',
-      bio:
-        'Former Black Ledger councillor. Self-redacted from all chain records. Plays a milling, ' +
-        'discarding, hand-attack deck that drowns you in your own deck.',
-      botColor: 'xrp', difficulty: 'hard',
-      quote: '"You\'ll forget this duel by tomorrow. I made sure of it."',
-    },
-    reward: 'Drained Tessera (14/15) · A thin black tile that weighs more than it should.',
-    mapPos: { x: 905, y: 855 },
-  },
-
-  // ───── CIPHER PEAK — The Final Ascent ─────────────────────────────────
-  {
-    id: 'cipher_peak', index: 15, act: 'coronation', chain: 'xrp',
-    name: 'The Ascent to Cipher Peak',
-    region: 'Cipher Peak · The First Master\'s Last Meditation',
-    description:
-      'The needle of black mountain that rises from the centre of the Mempool Sea. The First ' +
-      'Master climbed it ten cycles ago and never came back down. The pillar of pale light that ' +
-      'rises from its summit is the only thing in the Aetherweb that has never flickered. ' +
-      'You climb. The fifteenth Master is waiting at the top. So is the First.',
-    rival: {
-      name: 'The First Master',
-      title: 'The Architect of the Five Chains',
-      bio:
-        'The ancient who carved order from the Mempool. Has been meditating at Cipher Peak\'s ' +
-        'summit for ten cycles. Will rise to duel exactly once. Plays a flawless five-colour ' +
-        'control deck that contains one of every Master\'s signature card.',
-      botColor: 'xrp', difficulty: 'hard',
-      quote: '"You walked all five Chains and belonged to none. Show me the Aetherweb you remember."',
+      quote: '"My ancestor broke the Golden Deck. I will break the fool reforging it."',
     },
     reward:
-      'The Five-Chain Crown (15/15) · The First Master\'s authority, fragmented across the Sites, ' +
-      'reforges in your hand. The Splintering ends — or you reforge it your own way. Credits roll.',
-    mapPos: { x: 750, y: 360 },
+      'Fragment VI/X · A golden seal-card etched with the First Champion\'s ' +
+      'sigil. As the fortress gates swing open the warning is already burning ' +
+      'on every wall inside: THE VOID PLAYER AWAKENS.',
+    mapPos: { x: 1060, y: 640 },
+  },
+
+  // ────────── ACT III — THE VOID ────────────────────────────────────────
+  {
+    id: 'obsidian_void_master', index: 7, act: 'void', chain: 'avax',
+    name: 'The Void Spire — Obsidian',
+    region: 'Corrupted Dimension · The Shattered Pillar',
+    description:
+      'The Void Zone bleeds through the Realm. Cards disappear from ' +
+      'collections. Whole arenas wink out of existence. The first of three ' +
+      'elite Void Masters waits inside a pillar of black glass — every ' +
+      'surface a mirror of a duel you have already lost in some other ' +
+      'timeline.',
+    rival: {
+      name: 'Obsidian',
+      title: 'Void Master of the Shattered Pillar',
+      bio:
+        'First and largest of the three Void Masters. Plays a corrupted Pyro / ' +
+        'Rock destruction deck that ignores defensive lines by removing the ' +
+        'card from play entirely. Cards he has destroyed do not return; cards ' +
+        'he has banished may never have existed.',
+      botColor: 'avax', difficulty: 'hard',
+      quote: '"Your collection grows lighter every turn. You will not notice until it\'s gone."',
+    },
+    reward: 'Fragment VII/X · A black-and-gold mirror-card that reflects every move you have not yet made.',
+    mapPos: { x: 1300, y: 520 },
+  },
+  {
+    id: 'hex_void_master', index: 8, act: 'void', chain: 'sol',
+    name: 'The Void Spire — Hex',
+    region: 'Corrupted Dimension · The Hexed Circle',
+    description:
+      'A ring of seven floating altars rotating around a black sun. The ' +
+      'second Void Master casts every move as a hex — your monsters answer ' +
+      'to her before they answer to you. None of your hand is yours, in this ' +
+      'arena, until the duel ends.',
+    rival: {
+      name: 'Hex',
+      title: 'Void Master of the Hexed Circle',
+      bio:
+        'Spellcaster-pure Void Master. Plays a corrupted Spellcaster / Fiend ' +
+        'control deck that steals control of your monsters, copies your hand, ' +
+        'and forces you to discard cards you have not even drawn yet.',
+      botColor: 'sol', difficulty: 'hard',
+      quote: '"Your deck obeys me now. Make a move you think is yours."',
+    },
+    reward: 'Fragment VIII/X · A golden rune-card that whispers a different prophecy every time you read it.',
+    mapPos: { x: 1380, y: 320 },
+  },
+  {
+    id: 'null_void_master', index: 9, act: 'void', chain: 'xrp',
+    name: 'The Void Spire — Null',
+    region: 'Corrupted Dimension · The Empty Throne',
+    description:
+      'Nothing. The third Void Master\'s arena is, at first glance, empty. ' +
+      'No throne, no opponent, no card-table. Then you realise the table is ' +
+      'there and you are sitting at it — and the opponent across from you is ' +
+      'erased from your perception faster than you can name him.',
+    rival: {
+      name: 'Null',
+      title: 'Void Master of the Empty Throne',
+      bio:
+        'Third Void Master. The unmaker. Plays a corrupted Aqua / Reptile mill ' +
+        'deck that does not destroy cards — it deletes the very rules that ' +
+        'let them exist. Every fragment you have collected dims a little ' +
+        'when he draws.',
+      botColor: 'xrp', difficulty: 'hard',
+      quote: '"I am not playing against you. I am playing instead of you."',
+    },
+    reward: 'Fragment IX/X · A golden absence-card. You cannot tell, when holding it, what it depicts.',
+    mapPos: { x: 1200, y: 180 },
+  },
+  {
+    id: 'void_player_genesis_arena', index: 10, act: 'void', chain: 'avax',
+    name: 'The Genesis Arena',
+    region: 'Heart of the Realm · The Final Broadcast',
+    description:
+      'The arena at the centre of the world. The final fragment hangs above ' +
+      'the duelling-stone, suspended in golden light. The Void Player waits ' +
+      'on the far side of the table. Every duel-screen in the realm is now ' +
+      'showing this match. For the first time, when he speaks, you actually ' +
+      'listen.',
+    rival: {
+      name: 'The Void Player',
+      title: 'Devourer of Fragments',
+      bio:
+        'The unknown duellist who consumed the missing fragments before you ' +
+        'could find them. Plays a fused-chain deck assembled from the corrupted ' +
+        'remnants of every Sovereign before you — Lightning, Beasts, Machines, ' +
+        'Fairies, Sea-Serpents, Pyros, all answering to the same gold-flecked ' +
+        'black hand.',
+      botColor: 'avax', difficulty: 'hard',
+      quote: '"The Golden Deck should never be restored. Endless duels create endless conflict. Stop. Listen. Lose."',
+    },
+    reward:
+      'Fragment X/X · The final fragment lifts from the arena floor and joins ' +
+      'the nine you carry. The Golden Deck is, by every metric, complete. ' +
+      'Something still feels wrong.',
+    mapPos: { x: 840, y: 140 },
+  },
+  {
+    id: 'first_champion_summit', index: 11, act: 'void', chain: 'eth',
+    name: 'The Summit',
+    region: 'Beyond the Realm · The First Champion\'s Throne',
+    description:
+      'As the ten fragments merge, the spirit sealed inside the Golden Deck ' +
+      'awakens. The hooded figure from the very beginning returns — and ' +
+      'removes his mask. He was never your guide. He was never on your side. ' +
+      'For centuries he manipulated Duel Masters into gathering the fragments. ' +
+      'The Golden Deck was not meant to save the world. It was meant to ' +
+      'resurrect HIM.',
+    rival: {
+      name: 'The First Champion',
+      title: 'The Wielder of the Golden Deck',
+      bio:
+        'The ancient who founded the Chain Realm and lost the Golden Deck ' +
+        'to his apprentice ten centuries ago. Plays a five-chain golden ' +
+        'composite deck containing one of every Sovereign\'s signature card — ' +
+        'galaxies become monsters, stars become resources, the arena becomes ' +
+        'the battlefield itself. Cannot be out-tempo\'d. Cannot be out-' +
+        'controlled. Can only be out-played.',
+      botColor: 'eth', difficulty: 'hard',
+      quote:
+        '"You walked every Site. You defeated every keeper. You reforged my deck and carried it ' +
+        'to me. Now witness what you have rebuilt."',
+    },
+    reward:
+      'The Shattered Golden Deck · You break the deck rather than wield it. ' +
+      'The First Champion fades into light. The Chain Realm is finally free. ' +
+      'Your terminal blinks one last line: NEW CAMPAIGN UNLOCKED — THE ' +
+      'DIMENSIONAL CIRCUIT. Somewhere beyond the stars, a new challenger ' +
+      'smiles.',
+    mapPos: { x: 520, y: 120 },
   },
 ];
 
@@ -440,7 +401,7 @@ export function nextSite(currentIndex: number): SacredSite | undefined {
 }
 
 /**
- * Pixel position on the canonical map image (1500×1000 viewBox).
+ * Pixel position on the canonical map image (1536×1024 viewBox).
  * Returned as `{x, y}` for direct use in SVG node placement.
  */
 export interface MapPos { x: number; y: number }
@@ -462,413 +423,482 @@ export interface Interlude {
 }
 
 export const INTERLUDES: Record<SiteId, Interlude> = {
-  hot_wallet_caravanserai: {
+  // ────────── ACT I ─────────────────────────────────────────────────────
+  ace_vega_neon_district: {
     pre:
-`You arrive at the Orange Citadel from the dust of the Mempool road. The
-Caravanserai gates are propped open with a stack of dormant Ledger Wallets,
-and the warm chai inside smells of cardamom and gas-fees. JAKEY OF THE FIRST
-KEY waves you over to a low cushion. Two teacups are already poured.
+`Your first clue leads you to the Neon District. The arcade-lights wash
+the whole street in pink and electric blue. A crowd has formed around
+a raised duel-platform at the centre of the square, and they are
+chanting one name on a loop.
 
-"My mother said a heretic would come walking up the dunes today. She was
-right about the heretic, wrong about the dunes." His grin is patient,
-tutorial-perfect. "Drink first. Then we duel. You will lose. I will explain
-why. We will duel again. Tomorrow, you will leave the Citadel a little less
-breakable than you arrived."`,
+ACE VEGA. ACE VEGA. ACE VEGA.
+
+Undefeated king of the streets, deck of pure Lightning Rush — by the
+time you push to the front of the crowd he is already on the platform,
+already grinning, already shuffling.
+
+You step up. He laughs out loud.
+
+"YOU? You think YOU can collect the Golden Fragments? Heretic, please.
+You don't even have a deck-box."
+
+The crowd goes silent for a half-second, then erupts. You draw your
+first hand. He throws his at the table without looking.
+
+"Begin."`,
     post:
-`Jakey laughs the laugh of a teacher whose star pupil finally embarrassed
-him in front of the class. He pours you a second cup of chai, presses the
-brass First Key into your palm, and points west across the bazaar's
-rooftops to a black-glass tower silhouetted against the Orange sky.
+`Ace Vega's life-points hit zero. He stares at his own field, mouth
+open, like the math just stopped working in real time. Behind him, a
+glowing golden card lifts out of his deck on its own, hovers, and
+drifts across the table to your hand.
 
-"That tower belongs to MEV-rin. She has four hands and four winds and a
-very bad attitude. She will already know you are coming because the winds
-told her an hour ago. Walk faster than usual." He bows. The caravan-bell
-rings behind you. You step out of the Caravanserai and into the Bazaar of
-Speed proper — and the first of the four winds shifts to face you.`,
+Fragment I / X.
+
+The crowd does not cheer. They are absolutely silent. Ace finally
+laughs — a real one, this time, ragged at the edges.
+
+"You're stronger than I thought. Take it." He pushes the rest of his
+hand toward you, palm-down. "But the others won't go easy. The next
+fragment is in the Emerald Woods. There's a sage out there who's been
+waiting for a heretic. Maybe that's you."
+
+— You step off the platform. The neon dims behind you as you walk
+toward the green glow on the horizon. The first fragment is warm
+against your palm.`,
   },
-  sniper_tower_four_winds: {
+
+  willow_sage_emerald_woods: {
     pre:
-`The Sniper Tower has no door. You climb a single iron ladder bolted to its
-windward face for two hundred rungs. The wind shoves you at every step but
-never quite hard enough to throw you. MEV-RIN THE FOUR-HANDED is waiting at
-the top, balanced on the railing with four arms folded.
+`The Emerald Woods rise out of the asphalt like an old machine waking
+up. Every branch is hung with abandoned decks — paper, holographic,
+hand-drawn — the cards of duellists who walked away from the game
+long ago. You feel watched the moment you step onto the path.
 
-"You climbed in the wind. Good. I respect a heretic who arrives slightly
-out of breath. It means you cared." Two of her hands are already shuffling
-a deck. The other two are placing bids on cards you have not yet played.
-"Begin. I have already begun."`,
+WILLOW SAGE is waiting at a clearing of broken stones. Not a single
+weapon on her. Her hands are full of leaves; her deck is shuffled
+between her fingers like she hasn't put it down in years.
+
+"I know why you're here, heretic." Her voice is gentle. It is also
+final. "The Golden Deck caused wars long ago. Whole chains burned. I
+have spent forty cycles guarding what was left of the duellists who
+walked away from those wars. I will not surrender that to you."
+
+She sits cross-legged on the moss. Her deck settles in her lap. The
+ancient holographic trees brighten around her — Beastfolk forms
+shifting between trunks.
+
+"If you want the fragment, you will have to take it. Begin."`,
     post:
-`MEV-rin loses with grace — she even applauds her own loss, slowly, with
-two hands while the other two start re-pricing your inventory. She hands
-you a thin pane of black glass that hums in the prevailing wind: the Wind
-Sigil.
+`Willow Sage's last monster dissolves into a flock of holographic
+beasts that scatter into the canopy. She does not stand. She kneels
+slowly beside a half-ruined card-altar at the centre of the clearing
+and rests both hands on it, eyes closed.
 
-"There is a basket-lift on the southern face. It will drop you straight
-into the courtyard of the Floki Forge. Tell Bjorn I said his hammers run
-shallow." She winks all four eyes. "He hates that. It will help."
+"Maybe I was wrong, heretic." Her voice is softer than at the start.
+"Maybe the Golden Deck wasn't only a weapon. Maybe it was a shield,
+once. Maybe it can be both again. In the right hand."
 
-— The basket-lift creaks south for an hour. You descend through three
-weather-systems and a thin layer of smelter-smoke, and step out into the
-red glow of the volcanic Forge.`,
+A golden leaf-card lifts out of her deck and floats to yours.
+
+Fragment II / X.
+
+"Iron Nexus is north of here. The Machine City. Their Sovereign has
+already simulated you a million times over. Walk faster than he can
+think." She does not open her eyes. The forest closes gently behind
+you as you go.`,
   },
-  floki_forge: {
+
+  director_volt_iron_nexus: {
     pre:
-`The Forge is louder than any place you have ever been. The furnace's roar
-is constant; the hammers strike in arrhythmic counterpoint. BJORN OF FLOKI
-is at the central anvil, beating a coin so hot it is white and singing. He
-sees you and does not stop.
+`Iron Nexus is a single vertical city of mirrored chrome that stretches
+above the cloud-line. Every surface reflects every other surface; you
+see yourself walking through the city before you have taken the step.
 
-"Eleven more strikes, heretic. Twelve. There." He flicks the still-glowing
-coin at you with the back of his hammer. You catch it. It does not burn.
-"Now we duel. While the coin is still warm. I always win when the coin is
-still warm."`,
+DIRECTOR VOLT is waiting in the central server-cathedral, half-merged
+with the duel-simulator that runs the city. Cables thread out of his
+arms into the towers. His face flickers between human and machine
+every other second.
+
+"You possess a 0.003% chance of victory." His voice is flat and very
+quiet. The simulator behind him is already running your defeat at one
+million frames per second. "Please remain seated. Combo execution will
+begin on my first turn."
+
+The duel-stone lights up. The simulator hums louder. You sit anyway.
+Your hand is five cards. His is already on the field.`,
     post:
-`Bjorn stares at the cooling coin in your palm for a long moment, then
-laughs — a great long Norse laugh that the furnace seems to join in with.
-He drops a small iron hammer-token into your other hand and claps your
-shoulder hard enough to leave a soot-print.
+`The last Machine on Volt's board fragments into pixels and blows away.
+The simulator behind him goes silent for the first time in cycles. The
+hum drops to nothing. The city holds its breath.
 
-"Skál! You took the heat better than the last nine. There is an Orange
-caravan leaving tonight, bound across the Mempool Sea to the Coral Reef.
-The captain owes me a favour. Tell him I said the Reef is not as deep as
-it pretends." He grins. "He will laugh and he will let you ride free."
+Volt stares at the empty board for a long time. The flicker between
+his human and machine faces slows, then stops, on the human one.
 
-— Two days on a low-flying skiff with an orange sail and a captain who
-sings off-key. The Mempool Sea hisses underneath you, full of half-formed
-faces. At dawn on the second day the sky shifts from amber to violet, and
-the Coral Reef hums into view.`,
+"My calculations… were wrong." He says it like he is testing the
+sentence out loud. He says it again, slowly. "My calculations were
+wrong."
+
+A polished golden gear-card detaches from his deck-loader and rolls
+across the table to you.
+
+Fragment III / X.
+
+"You should not have won. Therefore the model was incomplete. I will
+recompile." He almost smiles. "Climb. The Celestial Cup is opening
+brackets. The reigning champion has already requested you by name."
+
+— Iron Nexus' towers dim respectfully as you descend.`,
   },
-  validator_coral_reef: {
+
+  // ────────── ACT II ────────────────────────────────────────────────────
+  nova_storm_celestial_cup: {
     pre:
-`The Reef hums in a chord that is just above your hearing. Walking on its
-upper coral feels like walking on a sleeping animal. ANATOLA THE SHOAL
-meets you at the central polyp — a vast violet cup the size of a cathedral
-— and gestures you to sit at the duelling-bench grown from a single living
-piece of coral.
+`To reach the fourth fragment you have to enter the Celestial Cup —
+and the Celestial Cup is not a duel, it is a tournament. Thousands
+register. Hundreds qualify. Sixteen reach the bracket. One wins the
+sky.
 
-"I have simulated this match eight hundred and forty-three times. In each
-simulation I win on turn seven. I am genuinely curious whether you will
-make it to turn eight." Her smile is dazzling and synthetic. "Begin."`,
+You duel rivals on a floating arena that drifts between stormclouds.
+Every round the wind picks up. By the finals you are above the clouds
+entirely, the duelling-stone suspended in a sphere of light, and the
+broadcast feed is being relayed to every duel-screen in the realm.
+
+NOVA STORM is the reigning champion, three cycles undefeated, and she
+is waiting for you at the centre of the stone. She does not look
+surprised. She looks delighted.
+
+"You climbed every round. Good. The realm needs a hero, heretic. Show
+me whether that's you."
+
+Lightning forks across the cloud-bowl below. She draws her opening
+hand from a sky-blue deck that hums like a tuning fork.`,
     post:
-`The Reef's chord shifts down a quarter-tone. Anatola tips her head,
-listens to herself listening, and laughs — a real laugh, the first the
-Reef has heard from her in eight cycles. She presses a small pink pearl
-into your hand and points east, across the surface of the Reef, to where
-a string of tents and lanterns is already setting up for tomorrow's fair.
+`Nova Storm's final Cyberse fairy dissolves into starlight. The sphere
+of light around the arena brightens for a single, blinding second —
+and then the crowd in every duel-screen across the realm erupts. The
+broadcast cuts to your face. You look terrible. You also look like a
+champion.
 
-"That is the Pump.Fun Carnival. Murad will already be selling you a
-ticket to a show that has not yet happened." She rolls her eyes. "Buy it.
-It is, somehow, always worth the price."
+Nova bows once, very low, and presses the fourth fragment into your
+hand herself.
 
-— You walk across the Reef on a path the corals open and close beneath
-your feet. The lanterns of the Carnival rise into the violet evening like
-a constellation getting itself organised.`,
+Fragment IV / X.
+
+"The realm needs a hero. Keep being one." She steps back. The arena
+begins its slow descent through the clouds. "There's a man called The
+Broker. He runs a market beneath the city — cards, relics, memories.
+He has the fifth fragment. Don't trade him anything you can't lose."
+
+— You step off the arena onto the ground feeling, for the first time
+since this began, like you might actually be doing the right thing.`,
   },
-  pump_fun_carnival: {
+
+  broker_shadow_market: {
     pre:
-`The Carnival\'s big tent is the size of a small moon and is currently
-collapsing on its east end while setting itself up on the west. You step
-under the entrance flap and a barker hands you a ticket printed in a coin
-you have not heard of. MURAD THE HUNDRED-CYCLES is standing on a barrel at
-the centre with both arms raised, mid-pitch.
+`The Shadow Market does not have an entrance. You step into a back-
+alley and the back-alley is already inside the market. Tents made of
+spliced contracts. Lamps that burn somebody else's memories. Vendors
+who quote prices in years of your life.
 
-"— and that, friends, is exactly why this cycle is DIFFERENT — oh, hello,
-heretic. You\'re early. Step into the ring. Step right in. We\'re about to
-have a duel and you happen to be the duel."`,
+THE BROKER waits at the centre, on a stool, behind a duelling-stone
+made of stitched playmats from every previous duellist who reached
+him. His face shifts every time you blink — never the same one twice.
+
+"Welcome, heretic. The fifth fragment is mine. You may duel for it. A
+warning: every turn in my arena, a rule changes. Sometimes mine.
+Sometimes yours. Sometimes both. Adapt, or trade me your memories of
+how this started."
+
+He smiles three different smiles in a row. You sit. The first rule-
+change has already taken effect.`,
     post:
-`The crowd cheers a beat too late. Murad bows so deeply his hat falls off
-and a smaller hat under it pops up. He produces, from somewhere, a paper
-ticket stub and presses it gently into your hand.
+`The Broker stares at his last face-up card for a long time. Then he
+laughs once, sharp and short, and stands up from his stool. The market
+stalls around him stop shifting. The lamps steady. For the first time
+since you entered, his face holds in place — and it is a face you do
+not recognise, but you feel like you should.
 
-"The stub re-prints every dawn. You may ride any tent in any Carnival
-forever." He winks. "There is a Phantom-stride pad behind the freak-show
-tent. Stand on it. Think of a Vault. The vault you think of will let you
-in. Try not to think of a bad one." His grin is too wide. "Don\'t worry
-about me. I\'ll see you at the top."
+"Interesting. The prophecy may be true after all." He flicks the
+fifth fragment to you across the table with two fingers. It is warm.
 
-— You stand on the pad. You think very carefully of the Phantom Vault.
-The Carnival around you turns paper-thin, then folds itself away, and
-when you blink you are standing on a flat moon hung over the violet
-horizon, with a single door floating in front of you.`,
+Fragment V / X.
+
+"You changed your strategy four times in nine turns. Most duellists
+panic when the rules move. You played the moves, not the game. Good."
+He sits back down. The market stalls start shifting again.
+
+"The Crimson Fortress is east. The descendant of the First Champion's
+apprentice has the sixth fragment. He will not be polite. He will not
+be subtle. Take a deep breath before you knock."
+
+— You leave the market through the same alley you came in. The
+memory of how you entered is intact. You don't remember asking for
+that to be the deal.`,
   },
-  phantom_vault: {
+
+  crimson_fortress_heir: {
     pre:
-`The Vault\'s door opens before you knock. KIRA THE UNSIGNED is seated
-inside on a bench made of every signature you have ever made, and a few
-you have not. She is holding the deck you came in with. She is, in fact,
-playing solitaire with it.
+`The Crimson Fortress sits on a sea of cooling magma. Its walls are
+black iron, its gates one solid slab of basalt twice your height. The
+banners flying above the parapets are red on red — a sigil you have
+never seen before but which feels, in your hand, exactly like the
+fragments you already carry.
 
-"Hello, Sorendo. I have your hand memorised. I have, by my count, three
-hundred and twelve of your habits memorised. You sigh when you topdeck.
-Did you know that?" She slides the deck back across to you, and lifts a
-duplicate, two turns ahead. "Let\'s see how many of these you can
-recognise before I play them."`,
+The gate-warden steps aside without a word. Inside the courtyard,
+LORD FERRAN — last of the Crimson bloodline — waits on a throne built
+out of broken duelling-stones from every challenger who came before.
+
+"I know who you are." His voice is low and unkind. "And I know what
+you are doing. Halfway through, isn't it? Six fragments. Then nine.
+Then ten. Then the Golden Deck reforms — and a thousand years of my
+family's work to keep it broken ends with a duel against an outsider."
+
+He stands. His deck is already in his hand.
+
+"My ancestor broke the Golden Deck for a reason, heretic. I am going
+to break you for the same one."`,
     post:
-`Kira\'s deck dissolves into blank parchment in her hand. She watches it
-fall, smiles a very small smile, and bows from where she sits. She hands
-you a fresh blank parchment — the Phantom Signature.
+`Lord Ferran's last Pyro warrior cracks across the chest, dissolves
+into orange embers, and the embers settle on the courtyard floor like
+ash. He looks at the empty board. He looks at you. He looks at the
+banner above the throne. Then he laughs, exactly once, with no
+humour in it whatsoever.
 
-"It will sign itself the moment you turn away from it. Useful in the next
-Act. The Crest does not honour signatures it can see being made." She
-gestures behind her. The back wall of the vault is now open and shows a
-red horizon. "Step through. The wind on the Crest is colder than you
-remember. Sorendo\'s old cloak will not be enough. Buy a thicker one in
-the Coliseum."
+"My ancestor broke the Golden Deck. I will break — no. I will not."
+He hands you the sixth fragment, palm-up, like a duellist conceding
+his deck-box at the end of a tournament.
 
-— You step through. The Phantom Vault folds shut behind you. You are
-standing at the lip of the Crimson Crest, snow underfoot and lava in the
-middle distance, with the roar of a coliseum-crowd echoing up the slope
-ahead. Act II has begun.`,
+Fragment VI / X.
+
+The fortress gates swing open behind him. Carved into the lintel,
+glowing faintly red, is a sentence that was definitely not there when
+you walked in:
+
+THE VOID PLAYER AWAKENS.
+
+"The fragments after this are not in the hands of duellists." Ferran's
+voice has gone quiet. "They are in the hands of things that used to
+be duellists. The Void Trio. Obsidian. Hex. Null. Whole arenas have
+gone dark since I started this match. Go. Stop them — or stop
+collecting. I will respect either."
+
+— You walk out of the fortress. The horizon flickers like a duel-
+screen with a dying signal. Reality is beginning to break.`,
   },
-  coq_inu_coliseum: {
+
+  // ────────── ACT III — THE VOID ────────────────────────────────────────
+  obsidian_void_master: {
     pre:
-`The Coliseum erupts when you walk in. Forty thousand throats roar
-"COC-K-A-DOODLE-DUEL" in a single, perfectly synchronised, deeply
-unhelpful chant. COQ himself struts onto the central sand-pit on iron
-spurs that strike sparks off the stone. He is the size of a horse and
-the colour of dried blood and gold leaf.
+`Reality has begun unspooling at the edges. You enter the Void Zone
+through a tear in the air the colour of a corrupted card-back. The
+Shattered Pillar rises out of the dark — black glass, the height of
+a mountain, every surface a mirror of a duel you do not remember
+losing.
 
-"COCK-A-DOODLE-DUEL!" he crows again, just for emphasis. The crowd
-loses its collective mind. Somewhere, a rooster-priest faints. The duel
-begins before either of you has drawn a card.`,
+OBSIDIAN waits on the duel-stone at its base. Larger than a human
+should be. A deck in each hand. No face beneath the hood, only a
+sheet of black glass with your reflection painted on it, mid-turn,
+already losing.
+
+"Welcome, fragment-bearer. You will not need the cards in your hand
+much longer. I am going to remove them from play and from existence."
+
+The duel begins. He does not draw. His opening hand is already
+banished from his deck. Your collection, in your inventory, dims by
+a single card.`,
     post:
-`COQ ruffles every feather on his enormous body simultaneously, then
-sheds one — a long black-and-red iron feather sharper than any blade —
-and lets it drift to your feet. The crowd is silent for the first time
-in nine cycles. Then they erupt again, in your name. You are, briefly,
-a national hero of the Coq cult.
+`Obsidian's black-glass face cracks down the middle. The cracks spread
+across the pillar behind him. The pillar collapses inward into pixels
+and is gone — and so is he, except for the seventh fragment, hovering
+in the empty air where the duel-stone used to be.
 
-The high-priest of Coq presses the feather into your hand and points
-east, across the lava-flow, to a low circle of stones with a glass
-floor. "The Hot Shorts Pit. Gannon expects you. Tell him COQ said his
-funding rate is, and I quote, ‘a tad spicy.’ He will not laugh. Tell
-him anyway."
+Fragment VII / X.
 
-— You cross the lava-bridge on a path of cooled obsidian tiles. The
-glass floor of the Pit looms ahead of you, and underneath it, a long
-slow lake of liquid fire.`,
+The card you lost from your collection at the start of the duel
+quietly re-appears in your inventory as the fragment touches your
+palm. You did not notice it was missing until it was back.
+
+The Void does not give you a moment to breathe. The next Spire is
+already visible across the distorted horizon — a ring of seven
+floating altars rotating around a black sun. Hex is waiting.`,
   },
-  hot_shorts_pit: {
+
+  hex_void_master: {
     pre:
-`The Pit\'s glass floor is uncomfortably warm. Beneath your boots, the
-lava-lake moves in slow patient swells. GANNON OF THE NEGATIVE FUNDING
-RATE is at the centre with a small black book open on a stand, ticking
-boxes as you walk in.
+`The Hexed Circle is seven floating altars rotating slowly around a
+black sun. You walk a path through them that did not exist a second
+ago. HEX waits at the centre, cross-legged, a single golden thread
+wound around her fingers — and that thread, you realise, is connected
+to every card in your deck.
 
-"You opened your hand. That\'s a fee. You stepped on the glass. Fee. You
-made eye contact with my book. Fee, fee." He grins and the book closes
-itself. "Net position: you owe me forty-two basis points before we\'ve
-even cut. Beautiful start. I love a heretic with a big short interest."`,
+"Your monsters answer to me now, fragment-bearer. Your hand is mine
+to read. Make a move you think is yours."
+
+You draw a card. The card on the top of your deck is, you are
+absolutely certain, not the card you drew.
+
+Begin."`,
     post:
-`Gannon\'s little black book burns spontaneously into ash on its stand.
-He watches it go and laughs — the first real laugh he has produced in
-two cycles. He bends down, scoops the ash, and presses a red wax chit
-into your hand, the seal still dripping.
+`Hex's last spell fizzles in the air between you and the black sun
+overhead winks out. The seven altars stop rotating. The golden thread
+around her fingers snaps, lengths of it curling away into the dark.
 
-"You closed my book. Nobody closes my book." He spits, grins. "Up the
-slope. The path to Joe\'s Citadel runs north through the Snow Lane.
-The Lane is haunted by liquidations. Don\'t look at any of them. They
-miss being looked at."
+She bows from a sitting position, a strange polite gesture, and the
+eighth fragment unspools from one of her sleeves into your hand.
 
-— You walk the Snow Lane in the failing red light. Translucent ghosts
-of liquidated traders drift alongside you, weeping silently into hands
-that no longer exist. You do not look at them. The Icebound Citadel
-rises ahead, blue-white against the Crimson sky.`,
+Fragment VIII / X.
+
+"You played a card I had not yet decided you would play. That was
+clever. That was — " she tilts her head, almost smiling " — almost
+mine."
+
+Then she is gone. The Hexed Circle dissolves around you and you are
+walking, already, toward the third Void Spire — except there is
+nothing on the horizon at all. No spire. No altar. No throne. Just
+the absence of one.`,
   },
-  icebound_citadel_of_joe: {
+
+  null_void_master: {
     pre:
-`Joe\'s Citadel is glass and ice and absolutely silent. Frost-traders
-line every gallery in perfect stillness, watching nothing, waiting for
-the throne room to ring its single bell. The bell rings as you walk
-in. JOE OF THE EVERLAST is on a throne carved from frozen open
-interest, feet not quite touching the floor. His face is the face of
-an eleven-year-old who has never been surprised in his life.
+`There is nothing here.
 
-"Funding is positive." His voice is flat. "You are paying. Begin."`,
+There is a duelling-stone where there is nothing. There is a
+duellist sitting across from you where there is also nothing. The
+duel has, somehow, already begun. You are losing it.
+
+NULL does not speak first. NULL does not, strictly, speak at all.
+When you try to recall what he looks like a half-second after
+glancing at him, the memory is already gone.
+
+The third and final Void Master. The unmaker. He has not used a
+single card from his deck and you have already lost two life-points.`,
     post:
-`Joe blinks. The frost-traders gasp, very quietly, in unison. Joe slides
-off the throne, walks to a small chest at its base, and lifts out a
-circlet of unmelting ice. He places it carefully on your head, and bows
-about one degree.
+`Null is gone. You cannot recall whether he was ever there. You can
+recall that you won — you can recall it because the ninth fragment
+is in your palm and it is, beyond any doubt, fragment IX/X.
 
-"You closed at a profit. I have not closed at a loss in eight cycles.
-Today I closed at a loss. It feels…" He searches for the word. " …
-educational." A faint smile. "There is a maglev along the southern
-glacier-rail. It runs once an hour to the foot of the White Spire. Take
-the next one. Pepe expects you."
+Fragment IX / X.
 
-— The maglev hums down the glacier at the speed of thought. The
-Crimson sky behind you fades to white. The White Spire rises out of
-the mist ahead, kilometre after kilometre of pale Cathedral. Act III
-begins as the train\'s doors open onto a marble plaza ringing with
-the morning Sermon.`,
+The empty arena fills back in, layer by layer — duelling-stone first,
+then walls, then the sky above. The Void Zone seals shut behind you.
+The Realm itself feels a little less hollow than it did when you
+entered.
+
+Ahead of you, a single corridor of golden light opens through the
+mended air. At the end of it, at the centre of the Realm, the
+Genesis Arena is already broadcasting. The match starts when you
+arrive. The Void Player is already seated.
+
+— You walk faster. The last fragment is waiting.`,
   },
-  pepe_pulpit: {
+
+  void_player_genesis_arena: {
     pre:
-`The plaza is packed. Tens of thousands of pilgrims in white robes are
-swaying in time. From a marble pulpit at the centre, PEPE THE FIRST is
-delivering, as he has every dawn for nine cycles, the Sermon On The
-Bag-Holder. His voice is everywhere; his lips barely move.
+`The Genesis Arena. The centre of the Realm. The final fragment hangs
+above the duelling-stone in a column of golden light. Every duel-
+screen in the Realm is on this broadcast. You can hear them, faintly,
+from every direction — billions of voices, holding one breath.
 
-"…and so, brothers and sisters, you shall HOLD. Through the dip you
-shall HOLD. Through the dump you shall HOLD. Even through the rug, my
-beloveds, you shall…" He sees you. The Sermon stops. The plaza falls
-silent. Pepe smiles. "…HOLD a moment. The heretic is here. Let us duel
-first. The Sermon can wait."`,
+THE VOID PLAYER is already seated across from you, hands folded over
+his deck. Black robes. Gold flecking the hems. The hood is up and
+empty. He has been waiting longer than you have been alive.
+
+He finally speaks. His voice is, surprisingly, very tired.
+
+"The Golden Deck should never be restored. Endless duels create
+endless conflict. Stop. Listen. Lose."
+
+He turns over his opening hand without looking down. Every card on
+his side of the table is one you recognise from a previous duel — a
+gold-flecked version of every signature card you have ever fought.
+Lightning. Beasts. Machines. Fairies. Sea-Serpents. Pyros. All of
+them, on the same hand, all of them his.
+
+For the first time in this entire journey, you wonder if he is right.
+
+You draw your first card anyway."`,
     post:
-`Pepe lowers his head and lets the Sermon resume itself, in chorus,
-across the plaza. He produces from his sleeve a heavy bronze coin
-engraved with a single tear and hands it to you.
+`Your ace monster delivers the final attack. The Void Player's last
+life-point goes out like a candle. He bows his head, very slightly,
+and does not lift it again.
 
-"You held. Better than I expected. Climb the South Stair. The
-Observatory awaits." His smile is small. "Archon Vitalyn will offer to
-explain his deck to you mid-game. Decline politely. He talks more than
-he plays, and that is saying something."
+The final fragment lifts from the column of golden light and floats,
+unhurried, into your hand. The ten fragments in your inventory align
+themselves of their own accord into the shape of a complete deck.
 
-— You climb the South Stair. Each step is engraved with a different
-proof. You stop reading them somewhere around the eight-hundredth
-step, when the air begins to thin and the Observatory dome rises into
-view, glass-bright in the noon sun.`,
+Fragment X / X.
+
+The Golden Deck is, by every visible metric, complete.
+
+Something is wrong.
+
+The Genesis Arena broadcast feed cuts to static. The billions of
+voices you could hear a moment ago go silent. The light around the
+duelling-stone dims to nothing, and then it brightens again — and
+the figure standing at the far edge is not the Void Player.
+
+It is the hooded figure from the very beginning. The one who told
+you to walk the Sites. The one whose face you never saw.
+
+He lifts his hands to his hood.
+
+"It is time."`,
   },
-  vitalik_observatory: {
+
+  first_champion_summit: {
     pre:
-`Vitalyn does not look up from his proof when you enter. He turns one
-page. He marks it with a silver ribbon. He turns another. He finally
-glances up — soft-spoken, polite, mildly curious.
+`The hooded figure removes his mask.
 
-"Hello. I am genuinely interested in whether you can beat me. I have not
-been genuinely interested in anything in three cycles. Thank you in
-advance for the data." He pushes his chair back, lifts a deck so neatly
-sleeved it appears to glow, and gestures you to the bench opposite.
-"Take as long as you like. I have, after all, taken longer."`,
+He was never your guide. He was never on your side. For centuries he
+manipulated Duel Masters into gathering the fragments, scattering
+them, gathering them again — the entire Saga, every cycle, every
+hero, every loss — was a long mechanism to do exactly one thing.
+
+Resurrect HIM.
+
+THE FIRST CHAMPION steps onto the duelling-stone. The arena widens
+around him until it is no longer an arena — it is the Realm itself,
+turned on its side and laid out as a board.
+
+His deck is the Golden Deck. The one you just reforged for him. He
+draws five cards. Galaxies become monsters. Stars become resources.
+The sky becomes the battlefield.
+
+His voice, when it finally arrives, is your own voice, older.
+
+"You walked every Site. You defeated every keeper. You reforged my
+deck and carried it to me. Now witness what you have rebuilt."
+
+Begin. There is no version of this you survive by playing safely.`,
     post:
-`Vitalyn closes his proof. Very slowly. Very reverently. He picks it up
-with both hands and sets it on a stand of solid logic, where it begins,
-faintly, to revise itself. He hands you a pane of clear glass: the Lens
-of First Principles.
+`The First Champion lays his last card down with the same care he laid
+the first. The galaxies on the field dim, one by one. The stars he
+spent as resources flicker out. The arena shrinks back to a normal
+duelling-stone. He looks at you across it with eyes that have, somewhere
+between turns, become entirely your own.
 
-"You falsified one of my theorems. I will need to rewrite chapter
-seven." He smiles — the first public smile he has produced in nine
-cycles. "Down the West Stair. The Gremlin Bog is at the foot. Kelby is
-very small and very fast. Do not lose count of his board."
+He almost smiles.
 
-— The West Stair winds down through Cathedral cloisters, then out
-into a marsh of half-finished smart contracts. The air smells like
-green tea and burnt opcodes. Small green eyes blink at you from the
-reeds.`,
-  },
-  sproto_gremlin_bog: {
-    pre:
-`Kelby is exactly waist-high, sitting on a throne of broken opcodes
-with a small golden crown perched on his head. Around him, a dozen
-Gremlins of varying competence are practising spells that mostly fizzle.
-He sees you and beams.
+"You were not supposed to be able to do this."
 
-"Greetings traveller! The gang is THRILLED you came. Truly thrilled.
-Look at them. They\'re vibrating." A Gremlin behind him is, in fact,
-vibrating. "We don\'t get many visitors who survive Pepe\'s Sermon
-without falling asleep. You\'re a treat. Let\'s duel."`,
-    post:
-`Kelby applauds with both small hands and tips his crown to you.
-The Gremlins around him chant your name in a high reedy chorus that
-sounds, distantly, like a dial-up handshake. Kelby tugs at the cuff
-of your sleeve and pricks the skin underneath with a tiny pin —
-faintly painful, faintly luminous.
+The Golden Deck shatters in his hands. The ten fragments hover for a
+moment — and then, instead of returning to you, they scatter
+upward, into the night, in ten different directions. Wherever they
+land, the Realm exhales. The Void seals. The Sovereigns wake. The
+broadcast feeds across every duel-screen come back on, all at once,
+showing the same scene: this one.
 
-"That\'ll glow green in the dark whenever a Gremlin is nearby. Which,
-if you\'re lucky, is often." He grins, pin still in hand. "South
-through the reeds. Larsen\'s Court is in the Black Ledger\'s outer
-wing. He will not say anything. Don\'t take it personally. He hasn\'t
-spoken in twelve cycles."
+The First Champion fades into light.
 
-— The reeds part. The bog firms underfoot into pillared stone. You
-walk south through the dusk into the silence of the Black Ledger, and
-the Quiet Court rises around you, pillar by pillar, in absolute
-silence.`,
-  },
-  quiet_court_of_larsen: {
-    pre:
-`Larsen is on the chief bench, robed, hooded, motionless. Pillared
-judges flank him on either side, all silent. You take your seat at the
-duelling-table opposite. Larsen places a single card face-down. He
-does not turn it. He does not blink. He simply waits.
+The Chain Realm is finally free.
 
-The Court waits with him.`,
-    post:
-`Larsen turns over his last card. He looks at it for a long moment.
-He looks at you. He nods once, exactly once, and the Court erupts —
-without sound — into what you can only describe as wild silent
-applause. Larsen reaches across the table and presses a small black
-stone gavel into your palm. It strikes against your other hand
-soundlessly, and you feel the strike anyway, in your teeth.
+Your terminal, somewhere far below, blinks one last line on a
+recovered screen:
 
-He does not speak. He gestures west, very precisely, toward a flooded
-corridor leading deeper into the Ledger. The Vault is that way.
+CONGRATULATIONS, MASTER DUELIST.
+NEW CAMPAIGN UNLOCKED: THE DIMENSIONAL CIRCUIT.
 
-— The corridor floods to your knees, then your waist. You wade
-through black water that does not feel like water. The Vault\'s arch
-rises out of the dark, lit from beneath, and a hooded figure with no
-face stands at its threshold, waiting.`,
-  },
-  vault_of_the_drained: {
-    pre:
-`JUSTIRA THE UNWRITTEN turns toward you as you enter and there is, for
-a moment, the impression of a face — and then there is not. Her hood
-is empty in the polite way of a face you have already been asked to
-forget.
-
-"I unwrote my name for a wager. I won the wager. The wager was: could
-I beat someone whose face I could not remember? You are the test." She
-gestures to the duelling-stone at the centre of the Vault, half
-submerged in black water. "Sit. Begin. Don\'t bother introducing
-yourself. I am about to forget you."`,
-    post:
-`Justira\'s not-face inclines toward you. Something like a smile is
-implied. She lifts a thin black tile from the water, presses it
-against your palm, and lets go. The tile weighs more than it should.
-The Drained Tessera.
-
-"The wager is closed. I lost. Worth it." Her not-voice is the absence
-of one. "The First Master knows your name. He has been waiting for you
-since the Splintering. Climb. There is no path. You will not need one."
-And then she is gone — not vanished, simply no longer on the ledger.
-
-— You walk out of the Vault. The Ledger\'s great arches fall behind
-you. Ahead, across the dark Mempool Sea, Cipher Peak\'s pillar of
-pale light shines straight up into a cloudless night. There is no
-ferry. You step onto the sea and the sea holds you. You walk.`,
-  },
-  cipher_peak: {
-    pre:
-`You climb. There is no path; your feet find one anyway. The pillar of
-light grows brighter the higher you go, then warmer, then almost kind.
-At the summit there is a flat black disc the width of a small lake.
-At its centre sits a figure in pale robes whose face you cannot quite
-hold in memory — every time you look directly at him he is, slightly,
-someone else. The First Master.
-
-"You walked all five Chains and belonged to none." His voice is
-not loud, but it is the only voice in the world right now. "Show me
-the Aetherweb you remember." He turns over his first card.
-
-Fifteen cards of his deck flicker, briefly, with the seals of every
-Master you have beaten. Fifteen seals. Fifteen reflections. He is
-playing all of them at once.`,
-    post:
-`The First Master lays down his last card with the same gentleness he
-laid down the first. He looks at you with eyes that have, somewhere
-between turns, become entirely your own. He smiles — your smile, but
-older — and the pillar of light overhead softens to nothing.
-
-"The Aetherweb you remember is alive in you. That is what I needed to
-see. Reforge the Chains, or leave them splintered. Wear the Crown, or
-do not. The Quest will free them either way."
-
-He sets the fifteen fragments down at his feet. They rise of their
-own accord and braid themselves into a single circlet of five
-colours, weightless in your hand.
-
-"Sorendo the Unhoused. Welcome home."
+And somewhere beyond the stars, a new challenger smiles.
 
 — credits roll —`,
   },
@@ -878,19 +908,30 @@ export function interludeOf(id: SiteId): Interlude { return INTERLUDES[id]; }
 
 // ── Epilogue ────────────────────────────────────────────────────────────────
 export const EPILOGUE = `
-The Splintering does not end the way the Sovereigns feared.
-It ends the way you choose.
+The Golden Deck is gone. Not reforged. Not in your hand. Not on the
+First Champion's throne. The ten fragments are scattered, one per
+chain, one per Sovereign — and they will not be collected again. Not
+in this cycle.
 
-If you wear the Crown, the Five Chains hum again as one. The Mempool
-quiets. The Sites stand open. The Sovereigns kneel.
+The Chain Realm wakes up. The Void Zone is sealed. The Sovereigns you
+defeated, one by one, sit on their thrones again — quieter, kinder,
+remembering. Ace Vega trains heretics for free in the Neon District.
+Willow Sage teaches Beastfolk decks to children in the Emerald Woods.
+Director Volt rebuilds Iron Nexus around a duel-simulator with the
+old combat-loss models patched out. Nova Storm coaches the next
+champion of the Celestial Cup, every cycle, by name. The Broker is
+still in his market, but his prices, lately, are lower than they
+used to be. Lord Ferran has hung his ancestor's seal in the Crimson
+Fortress's great hall and opened the gates to anyone who can knock.
 
-If you set the Crown down on Cipher Peak and walk away, the fragments
-re-scatter, gently, back to the fifteen Sites. The next pilgrim to walk
-the Quest will find the Sites a little kinder, the Masters a little
-wiser, the path between them a little better lit.
+Your terminal, the one that screamed gold ten chapters ago, has been
+quiet for weeks.
 
-Either way: you walked all five Chains and belonged to none.
-Either way: the Aetherweb is listening.
+You are looking at the next campaign-card glowing in its slot. THE
+DIMENSIONAL CIRCUIT. Whoever is smiling beyond the stars is not
+going to wait forever.
 
-— end of Memetic Masterquest, Cycle I —
+You shuffle your deck. You sit down. You draw.
+
+— end of THE GOLDEN DECK SAGA, Cycle I —
 `.trim();

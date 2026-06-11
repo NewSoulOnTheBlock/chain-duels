@@ -1,11 +1,11 @@
 // programs/master_wager/src/lib.rs
 //
-// Memetic Masters — $MASTER token wager escrow.
+// Chain Duels — $DUEL token wager escrow.
 //
 // Flow:
 //   1. `initialize(config)`    — admin sets oracle + master_mint + burn_bps.
-//   2. `create_match(...)`     — creator deposits N $MASTER into a per-match PDA vault.
-//   3. `join_match(...)`       — opponent deposits matching N $MASTER.
+//   2. `create_match(...)`     — creator deposits N $DUEL into a per-match PDA vault.
+//   3. `join_match(...)`       — opponent deposits matching N $DUEL.
 //   4. `settle_match(winner)`  — oracle signs; burns burn_bps of pot; sends rest to winner.
 //   5. `cancel_match()`        — if opponent never joined within cancel_timeout, creator
 //                                can reclaim their full deposit.

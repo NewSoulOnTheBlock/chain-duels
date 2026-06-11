@@ -3,14 +3,14 @@
 # and serves the built React app, backed by a managed Postgres database.
 
 databases:
-  - name: chains-tcg-db
+  - name: duelmasters-db
     plan: free                # free Postgres on Render
     databaseName: chains
     user: chains
 
 services:
   - type: web
-    name: chains-tcg
+    name: duelmasters
     runtime: node
     plan: free
     region: oregon
@@ -21,7 +21,7 @@ services:
         value: 20
       - key: DATABASE_URL
         fromDatabase:
-          name: chains-tcg-db
+          name: duelmasters-db
           property: connectionString
       - key: PGSSL
         value: "1"            # Render Postgres requires SSL
@@ -34,9 +34,9 @@ services:
         sync: false           # optional: Metaplex collection mint to filter on (recommended); leave unset to filter by name
       - key: MEMETIC_MASTERS_NAME_MATCH
         value: memetic master # fallback substring match when no collection mint is set
-      # ---- Custodial $MASTER wager escrow (REQUIRED for wager matches) ----
+      # ---- Custodial $DUEL wager escrow (REQUIRED for wager matches) ----
       - key: CUSTODIAL_ESCROW_KEYPAIR
-        sync: false           # JSON byte array of a Solana Keypair secret key, e.g. "[12,34,...]" (64 numbers). Generate with `solana-keygen new -o escrow.json --no-bip39-passphrase` then paste contents of escrow.json. Fund the resulting pubkey with SOL (fees) + a $MASTER ATA.
+        sync: false           # JSON byte array of a Solana Keypair secret key, e.g. "[12,34,...]" (64 numbers). Generate with `solana-keygen new -o escrow.json --no-bip39-passphrase` then paste contents of escrow.json. Fund the resulting pubkey with SOL (fees) + a $DUEL ATA.
       - key: SOLANA_RPC
         sync: false           # mainnet RPC URL, e.g. https://mainnet.helius-rpc.com/?api-key=YOUR_KEY (server-side reads for settlement)
       - key: VITE_SOLANA_RPC

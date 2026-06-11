@@ -5,7 +5,7 @@
 //
 //   ORACLE_PUBKEY=<base58>  ts-node scripts/initialize.ts
 //
-// Defaults: burn 10%, cancel timeout 15 min, min wager 1 $MASTER.
+// Defaults: burn 10%, cancel timeout 15 min, min wager 1 $DUEL.
 
 import {
   Connection, Keypair, Transaction, sendAndConfirmTransaction, PublicKey,
@@ -37,7 +37,7 @@ async function main() {
     oracle: new PublicKey(ORACLE_PUBKEY),
     burnBps: 1000,                 // 10% of pot burned
     cancelTimeoutSecs: 60 * 15,    // 15 min auto-cancel for Open matches
-    minWager: masterUi(1),         // 1 $MASTER min
+    minWager: masterUi(1),         // 1 $DUEL min
   });
 
   const tx = new Transaction().add(ix);

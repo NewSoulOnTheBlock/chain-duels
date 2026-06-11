@@ -22,6 +22,20 @@ let pool: pg.Pool | null = null;
 const memProfiles: Map<string, Profile> = new Map();
 const recordedMatches: Set<string> = new Set(); // matchID dedupe for in-memory mode
 
+// ── Duel packs (5-card $DUEL-paid mints) ────────────────────────────────────
+
+export type DuelPackRow = {
+  packId: number;
+  buyerWallet: string;
+  paymentSig: string;
+  pricePaid: string;          // base units as string (BigInt-safe)
+  cardIds: string[];          // 5 card defIds
+  mintAddresses: string[];    // matching NFT mint addresses
+  mintedAt: number;
+};
+const memDuelPacks: DuelPackRow[] = [];
+const memDuelPackSigs: Set<string> = new Set();
+
 // ── Booster tickets (real NFT mints) ────────────────────────────────────────
 
 export type BoosterTicketRow = {
@@ -157,6 +171,19 @@ export async function initDb() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS booster_tickets_buyer_idx ON booster_tickets (LOWER(buyer_wallet));`);
+  // $DUEL-paid 5-card packs (per-card NFTs minted to the buyer).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS duel_packs (
+      pack_id        BIGSERIAL PRIMARY KEY,
+      buyer_wallet   TEXT NOT NULL,
+      payment_sig    TEXT NOT NULL UNIQUE,
+      price_paid     NUMERIC NOT NULL,
+      card_ids       JSONB NOT NULL,
+      mint_addresses JSONB NOT NULL,
+      minted_at      BIGINT NOT NULL
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS duel_packs_buyer_idx ON duel_packs (LOWER(buyer_wallet));`);
   console.log('[db] Postgres ready.');
 }
 
@@ -283,6 +310,81 @@ export async function redeemTicketMerch(mintAddress: string, address: Record<str
     [mintAddress, now, JSON.stringify(address)],
   );
   return rows[0] ? rowToTicket(rows[0]) : null;
+}
+
+// ── Duel pack helpers (5-card $DUEL packs) ──────────────────────────────────
+
+function rowToDuelPack(r: any): DuelPackRow {
+  return {
+    packId: Number(r.pack_id),
+    buyerWallet: r.buyer_wallet,
+    paymentSig: r.payment_sig,
+    pricePaid: String(r.price_paid ?? '0'),
+    cardIds: Array.isArray(r.card_ids) ? r.card_ids : (r.card_ids ?? []),
+    mintAddresses: Array.isArray(r.mint_addresses) ? r.mint_addresses : (r.mint_addresses ?? []),
+    mintedAt: Number(r.minted_at),
+  };
+}
+
+export async function isDuelPackSigUsed(sig: string): Promise<boolean> {
+  if (!pool) return memDuelPackSigs.has(sig);
+  const { rows } = await pool.query(`SELECT 1 FROM duel_packs WHERE payment_sig = $1`, [sig]);
+  return rows.length > 0;
+}
+
+export async function countDuelPacks(): Promise<number> {
+  if (!pool) return memDuelPacks.length;
+  const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM duel_packs`);
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function insertDuelPack(p: {
+  buyerWallet: string;
+  paymentSig: string;
+  pricePaid: string;             // base units
+  cardIds: string[];
+  mintAddresses: string[];
+}): Promise<DuelPackRow> {
+  const now = Date.now();
+  if (!pool) {
+    const row: DuelPackRow = {
+      packId: memDuelPacks.length + 1,
+      buyerWallet: p.buyerWallet,
+      paymentSig: p.paymentSig,
+      pricePaid: p.pricePaid,
+      cardIds: p.cardIds,
+      mintAddresses: p.mintAddresses,
+      mintedAt: now,
+    };
+    memDuelPacks.push(row);
+    memDuelPackSigs.add(p.paymentSig);
+    return row;
+  }
+  const { rows } = await pool.query(
+    `INSERT INTO duel_packs (buyer_wallet, payment_sig, price_paid, card_ids, mint_addresses, minted_at)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6) RETURNING *`,
+    [p.buyerWallet, p.paymentSig, p.pricePaid, JSON.stringify(p.cardIds), JSON.stringify(p.mintAddresses), now],
+  );
+  return rowToDuelPack(rows[0]);
+}
+
+export async function getDuelPacksByWallet(wallet: string): Promise<DuelPackRow[]> {
+  if (!pool) return memDuelPacks.filter(p => p.buyerWallet.toLowerCase() === wallet.toLowerCase());
+  const { rows } = await pool.query(
+    `SELECT * FROM duel_packs WHERE LOWER(buyer_wallet) = LOWER($1) ORDER BY minted_at ASC`,
+    [wallet],
+  );
+  return rows.map(rowToDuelPack);
+}
+
+/** Roll up the set of card defIds + counts the wallet owns across all packs. */
+export async function getOwnedCardCounts(wallet: string): Promise<Record<string, number>> {
+  const packs = await getDuelPacksByWallet(wallet);
+  const counts: Record<string, number> = {};
+  for (const p of packs) {
+    for (const id of p.cardIds) counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return counts;
 }
 
 function key(name: string) {

@@ -1,1075 +1,151 @@
 // src/Board.tsx
-// React board for Chains TCG.
-import React, { useState, useEffect, useRef } from 'react';
+// React UI for Duelmasters — Yu-Gi-Oh TCG-style playmat.
+//
+// Layout:
+//   Opponent's row:  Hand · Field Spell · Spell/Trap Zones (5) · Extra Monster Zone · GY
+//                    Monster Zones (5)
+//   Battlefield gap (chain/battle state shown here)
+//   My side:         Monster Zones (5)
+//                    Spell/Trap Zones (5) · Field Spell · Extra Monster Zone · GY · Hand
+//
+// Implements LP, hand, phase advance buttons (Draw / Standby / Main1 / Battle /
+// Main2 / End), summon dialogs (Normal/Tribute/Flip/Special), spell/trap
+// activation, attack declaration, chain stack visualisation, and end-phase
+// hand-cap UI.
+
+import React, { useState, useMemo, useEffect } from 'react';
 import type { BoardProps } from 'boardgame.io/react';
 import {
-  CARDS, COLOR_META, COLORS, templateFor,
-  type Color, type CardDef,
+  CARDS, COLOR_META, isMonster, isSpell, isTrap, isExtraDeckMonster, tributesRequired,
+  type CardDef, type Color, type MonsterDef,
 } from './cards';
-import type { GState, Instance } from './Game';
-import { mulliganDrawCount, MULLIGAN_FLOOR, MULLIGAN_INITIAL_HAND } from './Game';
-import { recordResultApi, getProfileApi, formatRecord, type Profile } from './profiles';
-import { CardHover, CardPreview } from './CardPreview';
-import { createPortal } from 'react-dom';
-import { VoiceChat } from './Voice';
-import { Haptics } from './haptics';
+import type { GState, Instance, ChainLink, PlayerState } from './Game';
+import {
+  mulliganDrawCount, MULLIGAN_FLOOR, MULLIGAN_INITIAL_HAND,
+} from './Game';
+import { CardHover } from './CardPreview';
 
 type Props = BoardProps<GState>;
 
+// ── Layout constants ────────────────────────────────────────────────────────
+
+const CARD_W = 84;
+const CARD_H = 120;
+const ZONE_GAP = 6;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
 function useIsMobile(breakpoint = 720) {
-  const [m, setM] = useState(() => typeof window !== 'undefined' && window.innerWidth <= breakpoint);
+  const [m, setM] = useState(() => typeof window !== 'undefined' && window.innerWidth < breakpoint);
   useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
-    const onChange = () => setM(mq.matches);
-    onChange();
-    if (mq.addEventListener) mq.addEventListener('change', onChange);
-    else mq.addListener(onChange);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
-      else mq.removeListener(onChange);
-    };
+    const onR = () => setM(window.innerWidth < breakpoint);
+    window.addEventListener('resize', onR);
+    return () => window.removeEventListener('resize', onR);
   }, [breakpoint]);
   return m;
 }
 
-/**
- * Mobile-only zoom wrapper for the playmat. Renders +/-/⤧ buttons.
- * When zoom > 1, the inner element scales up via width%; the outer container
- * gets overflow: auto so the user can flick around with native momentum.
- * Single-finger taps go straight through to cards underneath.
- */
-function MobilePlaymatScaler({
-  enabled, children,
-}: { enabled: boolean; children: React.ReactNode }) {
-  const [zoom, setZoom] = useState(1);
-  if (!enabled) return <>{children}</>;
-  const ZOOMS = [1, 1.5, 2, 2.5];
-  const idx = ZOOMS.indexOf(zoom);
-  const zoomIn  = () => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, idx) + 1)]);
-  const zoomOut = () => setZoom(ZOOMS[Math.max(0, (idx >= 0 ? idx : 1) - 1)]);
-  const reset   = () => setZoom(1);
-  const scrolling = zoom > 1;
-  return (
-    <div style={{ position: 'relative' }}>
-      <div style={{
-        overflow: scrolling ? 'auto' : 'visible',
-        maxHeight: scrolling ? '70dvh' : 'none',
-        WebkitOverflowScrolling: 'touch',
-        overscrollBehavior: 'contain',
-        borderRadius: 10,
-        // Subtle frame so the zoomable region reads as a viewport.
-        outline: scrolling ? '1px solid rgba(255,215,106,0.25)' : 'none',
-      }}>
-        <div style={{
-          width: `${zoom * 100}%`,
-          margin: scrolling ? 0 : '0 auto',
-        }}>
-          {children}
-        </div>
-      </div>
-      {/* Floating zoom controls — top-right, above the mat. */}
-      <div style={{
-        position: 'absolute', top: 4, right: 4, zIndex: 5,
-        display: 'flex', gap: 4,
-        background: 'rgba(10,10,20,0.7)', padding: 3, borderRadius: 18,
-        border: '1px solid rgba(255,215,106,0.35)',
-      }}>
-        <button onClick={zoomOut} disabled={zoom <= ZOOMS[0]}
-          aria-label="Zoom out"
-          style={zoomBtnStyle(zoom <= ZOOMS[0])}>−</button>
-        <button onClick={reset}
-          aria-label="Reset zoom"
-          style={{ ...zoomBtnStyle(false), width: 'auto', padding: '0 8px', fontSize: 11 }}>
-          {Math.round(zoom * 100)}%
-        </button>
-        <button onClick={zoomIn} disabled={zoom >= ZOOMS[ZOOMS.length - 1]}
-          aria-label="Zoom in"
-          style={zoomBtnStyle(zoom >= ZOOMS[ZOOMS.length - 1])}>+</button>
-      </div>
-    </div>
-  );
-}
-function zoomBtnStyle(disabled: boolean): React.CSSProperties {
-  return {
-    width: 30, height: 30, borderRadius: '50%',
-    background: disabled ? '#222' : 'linear-gradient(180deg,#3a2a55,#22163a)',
-    color: disabled ? '#555' : '#ffd76a',
-    border: `1px solid ${disabled ? '#333' : '#ffd76a66'}`,
-    fontWeight: 800, fontSize: 16, lineHeight: 1,
-    cursor: disabled ? 'default' : 'pointer',
-  };
+function statBadge(def: CardDef): string {
+  if (isMonster(def)) {
+    if (def.subtype === 'link') return `L${def.linkRating} · ${def.atk}`;
+    if (def.subtype === 'xyz')  return `R${def.rank} · ${def.atk}/${def.def ?? 0}`;
+    return `★${def.level ?? 0} · ${def.atk}/${def.def ?? 0}`;
+  }
+  if (isSpell(def)) return `Spell · ${def.subtype}`;
+  if (isTrap(def))  return `Trap · ${def.subtype}`;
+  return '';
 }
 
-const COLOR_BAR: React.CSSProperties = { display: 'flex', gap: 6, fontSize: 12, marginTop: 4 };
+// ── Mini cards / zone slots ─────────────────────────────────────────────────
 
-function Pip({ c, n }: { c: Color | 'any'; n: number }) {
-  if (!n) return null;
-  const meta = c === 'any'
-    ? { hex: '#c8c8d0', ink: '#1a1a1a' }
-    : COLOR_META[c];
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: 18, height: 18, borderRadius: 9,
-      background: meta.hex, color: meta.ink,
-      fontWeight: 700, fontSize: 11, border: '1px solid #0003',
-    }}>{n}</span>
-  );
-}
-
-function CostPips({ def }: { def: CardDef }) {
-  if (!def.cost) return null;
-  return (
-    <div style={COLOR_BAR}>
-      <Pip c="any" n={def.cost.any ?? 0} />
-      {COLORS.map(c => <Pip key={c} c={c} n={def.cost?.[c] ?? 0} />)}
-    </div>
-  );
-}
-
-/**
- * Pointer-Events-based drag wrapper. The user grabs a card, drags it onto the
- * battlefield (any element with `data-dropzone="battlefield"`), and releases
- * to play it. Short taps that never cross the 10px threshold pass through to
- * the child's normal click handling (which on mobile means the tap-to-pin
- * lightbox in CardHover).
- *
- * Works for both touch and mouse via Pointer Events. `touch-action: none` on
- * the source stops the page from scrolling while the user drags.
- */
-function DraggableCard({
-  defId, onDrop, onCancel, onDragStateChange, children,
-}: {
-  defId: string;
-  onDrop: () => void;
-  onCancel?: () => void;
-  onDragStateChange?: (dragging: boolean) => void;
-  children: React.ReactNode;
-}) {
-  const [drag, setDrag] = useState<{ x: number; y: number; ok: boolean } | null>(null);
-  const startRef = useRef<{ x: number; y: number } | null>(null);
-  const movedRef = useRef(false);
-  const idRef = useRef<number | null>(null);
-
-  function findDrop(x: number, y: number): Element | null {
-    const el = document.elementFromPoint(x, y);
-    return el ? el.closest('[data-dropzone="battlefield"]') : null;
-  }
-
-  function onPointerDown(e: React.PointerEvent) {
-    if (e.button && e.button !== 0) return;
-    startRef.current = { x: e.clientX, y: e.clientY };
-    movedRef.current = false;
-    idRef.current = e.pointerId;
-    try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch {}
-  }
-  function onPointerMove(e: React.PointerEvent) {
-    if (idRef.current !== e.pointerId || !startRef.current) return;
-    const dx = e.clientX - startRef.current.x;
-    const dy = e.clientY - startRef.current.y;
-    if (!movedRef.current && Math.hypot(dx, dy) > 10) {
-      movedRef.current = true;
-      Haptics.tap();
-      onDragStateChange?.(true);
-    }
-    if (movedRef.current) {
-      setDrag({ x: e.clientX, y: e.clientY, ok: !!findDrop(e.clientX, e.clientY) });
-    }
-  }
-  function onPointerUp(e: React.PointerEvent) {
-    if (idRef.current !== e.pointerId) return;
-    try { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId); } catch {}
-    const moved = movedRef.current;
-    setDrag(null);
-    startRef.current = null; movedRef.current = false; idRef.current = null;
-    if (!moved) return; // short tap → let normal click flow run
-    onDragStateChange?.(false);
-    const drop = findDrop(e.clientX, e.clientY);
-    if (drop) { Haptics.play(); onDrop(); }
-    else { Haptics.invalid(); onCancel?.(); }
-  }
-  function onPointerCancel(e: React.PointerEvent) {
-    if (idRef.current !== e.pointerId) return;
-    const wasMoved = movedRef.current;
-    setDrag(null);
-    startRef.current = null; movedRef.current = false; idRef.current = null;
-    if (wasMoved) onDragStateChange?.(false);
-    onCancel?.();
-  }
-
-  const def = CARDS[defId];
-
-  return (
-    <span
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      onDragStart={(e) => e.preventDefault()}
-      draggable={false}
-      style={{
-        touchAction: 'none',
-        display: 'inline-block',
-        opacity: drag ? 0.35 : 1,
-        transition: drag ? 'none' : 'opacity 0.12s',
-        WebkitTouchCallout: 'none',
-        userSelect: 'none',
-        ...({ WebkitUserDrag: 'none' } as React.CSSProperties),
-      }}
-    >
-      {children}
-      {drag && def && createPortal(
-        <div style={{
-          position: 'fixed', left: drag.x, top: drag.y,
-          transform: 'translate(-50%, -50%) scale(0.55) rotate(-3deg)',
-          pointerEvents: 'none', zIndex: 9998,
-          filter: drag.ok
-            ? 'drop-shadow(0 12px 24px rgba(108, 75, 216, 0.85))'
-            : 'drop-shadow(0 8px 16px rgba(0, 0, 0, 0.6))',
-        }}>
-          <CardPreview def={def} />
-        </div>,
-        document.body
-      )}
-    </span>
-  );
-}
-
-function CardFace({
-  defId, instance, footer, onClick, selected, faceDown, pinOnTap,
-}: {
-  defId: string;
-  instance?: Instance;
-  footer?: React.ReactNode;
-  onClick?: () => void;
-  selected?: boolean;
+function MiniCard({ inst, faceDown = false, onClick, highlight, rotateDef = false }: {
+  inst: Instance | null;
   faceDown?: boolean;
-  pinOnTap?: boolean;
+  onClick?: () => void;
+  highlight?: 'attacker' | 'target' | 'selected' | null;
+  rotateDef?: boolean;
 }) {
-  const mobile = useIsMobile();
-  const W = mobile ? 92 : 138;
-  const H = mobile ? 134 : 200;
-  if (faceDown) {
+  if (!inst) {
     return (
       <div style={{
-        width: W, height: H, margin: 2, borderRadius: 8,
-        background: 'repeating-linear-gradient(45deg, #333 0 8px, #555 8px 16px)',
-        border: '1px solid #000', flex: '0 0 auto',
+        width: CARD_W, height: CARD_H,
+        border: '1px dashed #444', borderRadius: 6,
+        background: 'rgba(255,255,255,0.02)',
       }} />
     );
   }
-  const def = CARDS[defId];
-  if (!def) return null;
-  const meta = COLOR_META[def.color];
-  const dimmed = instance?.summoningSick || instance?.tapped;
-  const tpl = templateFor(def);
-  return (
-    <CardHover defId={defId} pinOnTap={pinOnTap} onActivate={pinOnTap ? onClick : undefined}>
+  const isFaceDown = !inst.faceUp || faceDown || inst.defId === 'hidden';
+  const def = !isFaceDown ? CARDS[inst.defId] : null;
+  const meta = def ? COLOR_META[def.color] : null;
+  const isDef = inst.position === 'def_up' || inst.position === 'def_down';
+  const ringColor =
+    highlight === 'attacker' ? '#ff5a4a' :
+    highlight === 'target'   ? '#5af0ff' :
+    highlight === 'selected' ? '#facc15' : null;
+
+  const inner = (
     <div onClick={onClick}
       style={{
-        width: W, height: H, margin: 2, padding: tpl ? 0 : 5, borderRadius: 8,
-        background: tpl ? undefined : meta.hex,
-        backgroundImage: tpl ? `url(${tpl.url})` : undefined,
-        backgroundSize: tpl ? '100% 100%' : undefined,
-        backgroundRepeat: 'no-repeat',
-        color: meta.ink,
-        border: selected ? '3px solid #ff0' : (tpl ? 'none' : '1px solid #000'),
-        cursor: onClick ? 'pointer' : 'default',
-        boxShadow: instance?.tapped ? 'inset 0 0 0 4px #0008' : undefined,
-        transform: instance?.tapped ? 'rotate(8deg)' : undefined,
-        opacity: dimmed && def.type === 'meme' ? 0.55 : 1,
-        fontFamily: 'system-ui, sans-serif',
-        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-        position: 'relative', flex: '0 0 auto',
+        width: CARD_W, height: CARD_H, cursor: onClick ? 'pointer' : 'default',
+        background: isFaceDown ? '#1a1b2a' : meta?.hex ?? '#1a1b2a',
+        color: meta?.ink ?? '#fff',
+        border: '1px solid #000', borderRadius: 6,
+        transform: (isDef || rotateDef) ? 'rotate(90deg)' : 'none',
+        boxShadow: ringColor ? `0 0 0 2px ${ringColor}, 0 4px 12px rgba(0,0,0,0.6)` : '0 4px 12px rgba(0,0,0,0.6)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative',
+        fontSize: 10,
       }}>
-      {tpl ? <TemplatedCardFaceContent def={def} instance={instance} footer={footer} tpl={tpl} /> : <>
-      <div style={{ fontWeight: 700, fontSize: 10, lineHeight: 1.05 }}>{def.name}</div>
-      <div style={{ fontSize: 8, opacity: 0.85, marginTop: 1, lineHeight: 1.1 }}>
-        {def.type.toUpperCase()}
-        {instance?.summoningSick && <span style={{ marginLeft: 3, color: '#000', background: '#ffeb3b', padding: '0 3px', borderRadius: 2, fontSize: 7 }}>SICK</span>}
-        {instance?.tapped && !instance?.summoningSick && <span style={{ marginLeft: 3, color: '#000', background: '#aaa', padding: '0 3px', borderRadius: 2, fontSize: 7 }}>TAPPED</span>}
-      </div>
-      <div style={{ fontSize: 8, marginTop: 3, flex: 1, overflow: 'hidden', lineHeight: 1.15 }}>{def.text}</div>
-      {def.type === 'meme' && (
-        <div style={{ alignSelf: 'flex-end', fontWeight: 700, fontSize: 11 }}>
-          {def.power}/{(def.toughness ?? 1) - (instance?.damage ?? 0)}
-        </div>
-      )}
-      <CostPips def={def} />
-      {footer && <div style={{ fontSize: 8, lineHeight: 1.1 }}>{footer}</div>}
-      </>}
-    </div>
-    </CardHover>
-  );
-}
-
-/** Content placed inside a templated MTG-style frame (per-color via COLOR_META.template). */
-function TemplatedCardFaceContent({ def, instance, footer, tpl }: { def: CardDef; instance?: Instance; footer?: React.ReactNode; tpl: { url: string; glyph?: string } }) {
-  const meta = COLOR_META[def.color];
-  return (
-    <>
-      {/* Name on the top grey bar */}
-      <div style={{
-        position: 'absolute', top: '5.6%', left: '9%', right: '9%', height: '5%',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 4, padding: '0 4px',
-        fontSize: 8, fontWeight: 800, color: '#1a1a1a',
-      }}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{def.name}</span>
-        {def.cost && (
-          <span style={{ display: 'flex', gap: 1 }}>
-            {(['any', ...COLORS] as const).map(c => {
-              const n = def.cost?.[c] ?? 0; if (!n) return null;
-              const cm = c === 'any' ? { hex: '#c8c8d0', ink: '#1a1a1a' } : COLOR_META[c];
-              return (
-                <span key={c} style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 10, height: 10, borderRadius: 5,
-                  background: cm.hex, color: cm.ink,
-                  fontWeight: 800, fontSize: 7,
-                }}>{n}</span>
-              );
-            })}
-          </span>
-        )}
-      </div>
-      {/* Art zone — image sits inside the template's black window */}
-      <div style={{
-        position: 'absolute', top: '13%', left: '8.5%', right: '8.5%', height: '44%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-        <span style={{
-          position: 'absolute', inset: 0,
+      {isFaceDown ? (
+        <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: meta.ink, fontWeight: 900,
-          fontSize: (tpl.glyph ?? meta.glyph ?? meta.name).length > 4 ? 11 : 18,
-          letterSpacing: (tpl.glyph ?? meta.glyph ?? meta.name).length > 4 ? 1 : 2,
-          textShadow: '0 2px 6px #000',
-        }}>{tpl.glyph ?? meta.glyph ?? meta.name}</span>
-        {def.image && (
-          <img src={def.image} alt="" loading="lazy"
-            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-            style={{ position: 'relative', width: '100%', height: '100%', objectFit: 'cover' }} />
-        )}
-        {/* Status badges overlay on top-right of art */}
-        {instance?.summoningSick && <span style={{ position: 'absolute', top: 2, right: 2, color: '#000', background: '#ffeb3b', padding: '0 3px', borderRadius: 2, fontSize: 6, fontWeight: 800 }}>SICK</span>}
-        {instance?.tapped && !instance?.summoningSick && <span style={{ position: 'absolute', top: 2, right: 2, color: '#000', background: '#aaa', padding: '0 3px', borderRadius: 2, fontSize: 6, fontWeight: 800 }}>TAP</span>}
-      </div>
-      {/* Type bar */}
-      <div style={{
-        position: 'absolute', top: '58.5%', left: '9%', right: '9%', height: '4.5%',
-        display: 'flex', alignItems: 'center', padding: '0 4px',
-        fontSize: 7, fontWeight: 700, color: '#1a1a1a',
-        letterSpacing: 0.5, textTransform: 'uppercase',
-      }}>
-        {def.type}
-      </div>
-      {/* Rules text box */}
-      <div style={{
-        position: 'absolute', top: '67%', left: '9%', right: '9%', bottom: '7%',
-        padding: '3px 5px',
-        fontSize: 7, lineHeight: 1.15, color: '#1a1a1a',
-        overflow: 'hidden',
-      }}>
-        {def.text}
-        {def.type === 'meme' && (
+          width: '100%', height: '100%', color: '#4a4a6a', fontWeight: 800, fontSize: 11,
+        }}>
+          ?
+        </div>
+      ) : def ? (
+        <>
           <div style={{
-            position: 'absolute', right: 4, bottom: 2,
-            fontWeight: 800, fontSize: 10, color: '#1a1a1a',
-            padding: '0 4px', background: '#e8e6c8',
-            border: '1px solid #4a5a3a', borderRadius: 2,
+            padding: '3px 4px', fontSize: 9, fontWeight: 800, lineHeight: 1.1,
+            background: 'rgba(0,0,0,0.25)', whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>{def.name}</div>
+          <div style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.15)', position: 'relative',
           }}>
-            {def.power}/{(def.toughness ?? 1) - (instance?.damage ?? 0)}
+            {def.image ? (
+              <img src={def.image} alt={def.name}
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ fontSize: 18, fontWeight: 900, color: meta?.ink }}>{meta?.glyph}</div>
+            )}
           </div>
-        )}
-        {footer && <div style={{ fontSize: 6, lineHeight: 1.05, marginTop: 2 }}>{footer}</div>}
-      </div>
-    </>
-  );
-}
-
-function GasBar({ gas }: { gas: Record<Color, number> }) {
-  return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-      <span style={{ fontSize: 12, opacity: 0.7 }}>Gas:</span>
-      {COLORS.map(c => <Pip key={c} c={c} n={gas[c]} />)}
+          <div style={{
+            padding: '2px 4px', fontSize: 9, background: 'rgba(0,0,0,0.6)', color: '#fff',
+            textAlign: 'right',
+          }}>{statBadge(def)}</div>
+        </>
+      ) : null}
     </div>
   );
+
+  if (def) return <CardHover defId={inst.defId}>{inner}</CardHover>;
+  return inner;
 }
 
-export function ChainsBoard(props: Props) {
-  const { G, ctx, moves, playerID, isActive, chatMessages, sendChatMessage, matchID, matchData } = props as Props & {
-    matchID?: string;
-    matchData?: Array<{ id: number; name?: string; isConnected?: boolean }>;
-  };
-  const mobile = useIsMobile();
-  const myId  = playerID ?? '0';
-  const oppId = myId === '0' ? '1' : '0';
-  const me   = G.players[myId];
-  const opp  = G.players[oppId];
-
-  const [selectedHand, setSelectedHand] = useState<number | null>(null);
-  const [targetMode, setTargetMode] = useState<null | { kind: 'meme' | 'any' | 'machine' }>(null);
-  // Mobile hand drawer (bottom sheet). On mobile, the hand is collapsed to a
-  // peek bar; tapping ✋ opens a full-screen sheet to browse + play cards.
-  const [handOpen, setHandOpen] = useState(false);
-
-  const myTurn = ctx.currentPlayer === myId;
-  const inBlockers = ctx.activePlayers?.[myId] === 'blockers';
-  const pickPhase = !!me?.needsColorPick || !!opp?.needsColorPick;
-  const iMustPick = !!me?.needsColorPick;
-  const mulliganPhase = ctx.phase === 'mulligan';
-  const myMulliganDone = !!G.mulligan?.done?.[myId];
-  const oppMulliganDone = !!G.mulligan?.done?.[oppId];
-  const myMulliganCount = G.mulligan?.counts?.[myId] ?? 0;
-
-  // Auto-apply the joiner's stashed deck choice from the lobby modal, once.
-  const pickAppliedRef = useRef(false);
-  useEffect(() => {
-    if (!iMustPick || pickAppliedRef.current) return;
-    let stashedDeck: string | null = null;
-    let stashedColor: string | null = null;
-    try {
-      stashedDeck = sessionStorage.getItem('pendingCustomDeck');
-      stashedColor = sessionStorage.getItem('pendingPickColor');
-    } catch {}
-    if (stashedDeck) {
-      try {
-        const deck = JSON.parse(stashedDeck);
-        if (Array.isArray(deck) && deck.length > 0) {
-          pickAppliedRef.current = true;
-          try { sessionStorage.removeItem('pendingCustomDeck'); } catch {}
-          try { sessionStorage.removeItem('pendingPickColor'); } catch {}
-          // The first arg is ignored when a custom deck is provided; pass any color.
-          moves.chooseColor('sol' as Color, deck);
-          return;
-        }
-      } catch {}
-    }
-    if (stashedColor && COLORS.includes(stashedColor as Color)) {
-      pickAppliedRef.current = true;
-      try { sessionStorage.removeItem('pendingPickColor'); } catch {}
-      moves.chooseColor(stashedColor as Color);
-    }
-  }, [iMustPick, moves]);
-
-  // Auto-pass: after combat resolves on my turn, if I have no playable cards
-  // in hand AND no untapped, non-sick memes that could still attack, end the
-  // turn automatically. Honors target-selection mode so we never interrupt it.
-  const wasBlockersRef = useRef(false);
-  const autoPassedTurnRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (pickPhase || !myTurn || ctx.gameover) return;
-    const oppInBlockers = ctx.activePlayers?.[oppId] === 'blockers';
-    if (oppInBlockers) { wasBlockersRef.current = true; return; }
-    if (!wasBlockersRef.current) return;
-    // Combat just resolved on my main phase.
-    wasBlockersRef.current = false;
-    if (autoPassedTurnRef.current === ctx.turn) return;
-    if (selectedHand != null || targetMode != null) return;
-
-    // Untapped, non-sick meme that could attack again?
-    const hasReadyAttacker = me.memes.some(m => !m.tapped && !m.summoningSick);
-
-    // Potential gas this turn = current pool + 1 of each untapped node's color.
-    const avail: Record<Color, number> = { ...me.gas } as Record<Color, number>;
-    for (const n of me.nodes) {
-      if (!n.tapped) {
-        const ndef = CARDS[n.defId];
-        if (ndef) avail[ndef.color] = (avail[ndef.color] ?? 0) + 1;
-      }
-    }
-    const extraNodes = me.machines.filter(mm => CARDS[mm.defId]?.effect === 'extra_node_per_turn').length;
-    const nodesLeft = (1 + extraNodes) - me.nodesPlayedThisTurn;
-
-    const canPlayAnything = me.hand.some(defId => {
-      const def = CARDS[defId];
-      if (!def) return false;
-      if (def.type === 'node') return nodesLeft > 0;
-      const cost = def.cost ?? {};
-      // Colored requirement
-      let leftover = 0;
-      let okColored = true;
-      for (const c of COLORS) {
-        const need = cost[c] ?? 0;
-        if (need > (avail[c] ?? 0)) { okColored = false; break; }
-        leftover += (avail[c] ?? 0) - need;
-      }
-      if (!okColored) return false;
-      return (cost.any ?? 0) <= leftover;
-    });
-
-    if (!canPlayAnything && !hasReadyAttacker) {
-      autoPassedTurnRef.current = ctx.turn;
-      const t = window.setTimeout(() => {
-        // Re-check the latest state-derived predicates via closure-fresh values.
-        moves.passTurn();
-      }, 500);
-      return () => window.clearTimeout(t);
-    }
-  }, [ctx.activePlayers, ctx.turn, ctx.gameover, myTurn, oppId, pickPhase, selectedHand, targetMode, me, moves]);
-
-  // Auto-skip block phase: if I'm the defender in the blockers stage and I have
-  // no untapped memes available to block, confirm-blocks immediately.
-  const autoSkippedBlockTurnRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (pickPhase || ctx.gameover) return;
-    if (ctx.activePlayers?.[myId] !== 'blockers') return;
-    if (autoSkippedBlockTurnRef.current === ctx.turn) return;
-    const hasBlocker = me.memes.some(m => !m.tapped);
-    if (hasBlocker) return;
-    autoSkippedBlockTurnRef.current = ctx.turn;
-    const t = window.setTimeout(() => moves.confirmBlocks(), 500);
-    return () => window.clearTimeout(t);
-  }, [ctx.activePlayers, ctx.turn, ctx.gameover, myId, pickPhase, me, moves]);
-
-  function tryPlay(idx: number) {
-    const defId = me.hand[idx];
-    const def = CARDS[defId];
-    if (!def) return;
-    if (def.type === 'aura') {
-      // Auras always target a meme.
-      Haptics.tap();
-      setSelectedHand(idx);
-      setTargetMode({ kind: 'meme' });
-      return;
-    }
-    if (def.type === 'move') {
-      const needsTarget =
-        def.effect === 'destroyMeme' || def.effect === 'bounceMeme' ||
-        def.effect === 'destroyMachine' ||
-        def.effect === 'damage2' || def.effect === 'damage3' || def.effect === 'damage5';
-      if (needsTarget) {
-        Haptics.tap();
-        setSelectedHand(idx);
-        const kind: 'meme' | 'any' | 'machine' =
-          def.effect === 'destroyMachine' ? 'machine' :
-          (def.effect === 'damage2' || def.effect === 'damage3' || def.effect === 'damage5') ? 'any' :
-          'meme';
-        setTargetMode({ kind });
-        return;
-      }
-    }
-    Haptics.play();
-    moves.playCard(idx);
-  }
-
-  function pickTarget(uid: string) {
-    if (selectedHand == null) return;
-    Haptics.play();
-    moves.playCard(selectedHand, uid);
-    setSelectedHand(null);
-    setTargetMode(null);
-  }
-
-  const [blockSel, setBlockSel] = useState<{ blockerUid?: string }>({});
-  const [notice, setNotice] = useState<string>('');
-  function flash(msg: string) {
-    setNotice(msg);
-    window.setTimeout(() => setNotice(n => (n === msg ? '' : n)), 2200);
-  }
-
-  // ── Profile names from lobby + W/L tracking via API ────────────────────────
-  // Prefer lobby-supplied player names (online play). Fall back to in-game profileName (local play).
-  const myName  = matchData?.find(p => String(p.id) === myId )?.name  || me.profileName  || `Player ${myId}`;
-  const oppName = matchData?.find(p => String(p.id) === oppId)?.name  || opp.profileName || `Player ${oppId}`;
-
-  const [myProfile,  setMyProfile]  = useState<Profile | null>(null);
-  const [oppProfile, setOppProfile] = useState<Profile | null>(null);
-
-  // Fetch profiles initially and again whenever a result is recorded.
-  const refreshProfiles = React.useCallback(() => {
-    getProfileApi(myName).then(setMyProfile).catch(() => {});
-    getProfileApi(oppName).then(setOppProfile).catch(() => {});
-  }, [myName, oppName]);
-  useEffect(() => { refreshProfiles(); }, [refreshProfiles]);
-
-  // On gameover, post result to API. Server dedupes by matchID so it's safe for both clients to post.
-  // Solo (vs-bot) matches use a `solo-…` matchID and skip the server hop —
-  // their results are tracked locally via SoloClient → dailyChallenge.ts.
-  const isSolo = !!matchID && matchID.startsWith('solo-');
-  const recordedRef = useRef(false);
-  useEffect(() => {
-    if (!ctx.gameover || recordedRef.current || !matchID) return;
-    recordedRef.current = true;
-    const draw = !!ctx.gameover.draw;
-    const winnerId = ctx.gameover.winner as string | undefined;
-    const winnerName = winnerId === myId ? myName : winnerId === oppId ? oppName : null;
-    const loserName  = winnerName ? (winnerName === myName ? oppName : myName) : null;
-    // Buzz for the result.
-    if (draw) Haptics.turn();
-    else if (winnerId === myId) Haptics.win();
-    else Haptics.loss();
-    if (isSolo) {
-      // SoloClient handles solo result recording; broadcast a window event so
-      // it can save the daily-best without us importing it (decouples Board).
-      try {
-        window.dispatchEvent(new CustomEvent('mmtcg:solo-end', {
-          detail: { matchID, draw, winnerSeat: winnerId, turns: ctx.turn },
-        }));
-      } catch { /* swallow */ }
-      return;
-    }
-    const rankedMeta = G.ranked
-      ? {
-          ranked: true,
-          seasonId: G.ranked.seasonId,
-          // Seat 0 / 1 mapping: keep stable as p0/p1 for the rating service.
-          player0: myId === '0' ? myName : oppName,
-          player1: myId === '0' ? oppName : myName,
-          startedAt: G.ranked.startedAt,
-          replaySeed: matchID,
-        }
-      : {};
-    const wagerMeta = G.wager?.kind === 'master' && !draw
-      ? { wager: {
-            onchainId: G.wager.onchainId,
-            winnerSeat: winnerId === '0' ? '0' : '1',
-            mode: 'custodial',
-        } }
-      : {};
-    recordResultApi(matchID, {
-      winner: draw ? null : winnerName,
-      loser:  draw ? null : loserName,
-      draw,
-      ...rankedMeta,
-      ...wagerMeta,
-    } as any).then(() => refreshProfiles()).catch(e => console.warn('record result failed', e));
-  }, [ctx.gameover, matchID, myId, oppId, myName, oppName, refreshProfiles]);
-
-  // ── Render ────────────────────────────────────────────────────────────────
-  const [showRules, setShowRules] = useState(false);
+function ZoneRow({ instances, label, onClickZone }: {
+  instances: Array<Instance | null>;
+  label: string;
+  onClickZone?: (index: number, inst: Instance | null) => void;
+}) {
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: mobile ? 6 : 8, color: '#eee', background: '#0a0a10', minHeight: '100vh', height: mobile ? 'auto' : '100dvh', display: 'flex', flexDirection: 'column', overflow: mobile ? 'visible' : 'hidden' }}>
-      {/* Compact top status bar */}
-      <TurnBanner
-        myTurn={myTurn} turn={ctx.turn}
-        phase={inBlockers ? 'block' : myTurn ? 'main' : 'wait'}
-        myName={myName} oppName={oppName}
-        myProfile={myProfile} oppProfile={oppProfile}
-        onOpenRules={() => setShowRules(true)}
-        onEndTurn={() => { Haptics.turn(); moves.passTurn(); }}
-        canEndTurn={myTurn && !inBlockers && !ctx.gameover && !mulliganPhase}
-        attackerCount={G.combat.attackers.length}
-        onConfirmAttackers={() => { Haptics.attack(); moves.confirmAttackers(); }}
-        canAttack={myTurn && !inBlockers && !ctx.gameover && !mulliganPhase}
-        inBlockers={inBlockers}
-        onConfirmBlocks={() => { Haptics.attack(); moves.confirmBlocks(); }}
-        turnDeadline={G.turnDeadline ?? 0}
-        canForceEnd={!myTurn && !ctx.gameover && ctx.phase === 'play'}
-        onForceEnd={() => moves.forceEndTurn()}
-      />
-
-      {/* Floating Rules drawer */}
-      {showRules && <RulesDrawer onClose={() => setShowRules(false)} />}
-
-      {/* Floating END TURN button — bottom-right of the viewport for fast
-          thumb-reach on desktop. Mobile uses the dedicated MobileActionBar
-          along the bottom instead. */}
-      {!mobile && myTurn && !inBlockers && !ctx.gameover && !mulliganPhase && (
-        <button
-          onClick={() => { Haptics.turn(); moves.passTurn(); }}
-          title="End your turn (Space)"
-          style={{
-            position: 'fixed', right: 18, bottom: 18, zIndex: 90,
-            background: 'linear-gradient(180deg, #f0d27a, #c69533)',
-            color: '#1a1408', border: '2px solid #8a6d24',
-            borderRadius: 12, padding: '14px 22px',
-            cursor: 'pointer', fontWeight: 900, fontSize: 15, letterSpacing: 2,
-            boxShadow: '0 6px 24px rgba(217,184,95,0.55), 0 0 0 1px rgba(0,0,0,0.4)',
-            textShadow: '0 1px 0 rgba(255,255,255,0.3)',
-          }}
-        >END TURN ⏎</button>
-      )}
-
-      {/* Pre-game mulligan overlay */}
-      {mulliganPhase && !iMustPick && (
-        <MulliganModal
-          hand={me.hand}
-          mulliganCount={myMulliganCount}
-          done={myMulliganDone}
-          oppDone={oppMulliganDone}
-          deadline={G.mulligan?.deadline ?? 0}
-          onKeep={() => moves.keepHand()}
-          onMulligan={() => moves.mulligan()}
-          onForceEnd={() => moves.forceKeepOpponent()}
-        />
-      )}
-
-      {/* Solo: clear indicator when the bot is taking its turn so the
-          user doesn't think the UI is frozen. */}
-      {isSolo && !myTurn && !mulliganPhase && !ctx.gameover && (
-        <div style={{
-          position: 'fixed', top: 70, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 150, padding: '8px 16px',
-          background: 'rgba(76, 29, 149, 0.92)', color: '#fff',
-          border: '1px solid #a78bfa', borderRadius: 999,
-          fontFamily: '"Cinzel", "Times New Roman", serif', fontWeight: 700,
-          fontSize: 13, letterSpacing: 1, textTransform: 'uppercase',
-          boxShadow: '0 0 16px rgba(167,139,250,0.55)',
-          pointerEvents: 'none',
-        }}>
-          🤖 Bot is thinking…
-        </div>
-      )}
-
-      {/* Deck-pick overlay — second player picks here if they arrived without a stashed color */}
-      {iMustPick && (
-        <div style={{
-          padding: 16, marginBottom: 10,
-          background: 'linear-gradient(180deg, rgba(26,18,64,0.92), rgba(10,10,30,0.92))',
-          border: '1px solid #4c1d95', borderRadius: 6,
-          boxShadow: '0 0 14px rgba(139,92,246,0.25)',
-          fontFamily: '"EB Garamond", Garamond, "Times New Roman", serif',
-          color: '#ece1c7',
-        }}>
-          <div style={{
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-            fontWeight: 800, fontSize: 14, letterSpacing: 2,
-            color: '#f0b32a', textTransform: 'uppercase',
-            textShadow: '0 0 8px rgba(240,179,42,0.35)',
-            marginBottom: 6,
-          }}>Choose your deck</div>
-          <div style={{ fontSize: 12, color: '#cdbf99', marginBottom: 10 }}>
-            The match has begun. Pick a chain to play with — your deck will be shuffled and dealt.
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {COLORS.map(c => {
-              const meta = COLOR_META[c];
-              return (
-                <button key={c} onClick={() => moves.chooseColor(c)} style={{
-                  padding: '10px 16px',
-                  background: meta.hex, color: meta.ink,
-                  border: '2px solid #000', borderRadius: 6, fontWeight: 800, cursor: 'pointer', fontSize: 13,
-                }}>{meta.name}</button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Waiting banner — opponent hasn't picked yet */}
-      {!iMustPick && opp?.needsColorPick && (
-        <div style={{
-          padding: '8px 14px', marginBottom: 10, fontSize: 13,
-          fontFamily: '"EB Garamond", Garamond, "Times New Roman", serif',
-          background: 'linear-gradient(180deg, rgba(26,18,64,0.92), rgba(10,10,30,0.92))',
-          border: '1px solid #4c1d95', borderRadius: 6, color: '#ece1c7',
-          boxShadow: '0 0 14px rgba(139,92,246,0.25)',
-        }}>
-          Waiting for opponent to choose their deck…
-        </div>
-      )}
-
-      {/* Step instructions */}
-      {!ctx.gameover && !pickPhase && (
-        <div style={{
-          padding: '8px 14px', marginBottom: 6, fontSize: 13,
-          fontFamily: '"EB Garamond", Garamond, "Times New Roman", serif',
-          background: inBlockers
-            ? 'linear-gradient(180deg, rgba(64,40,8,0.92), rgba(28,16,4,0.92))'
-            : (myTurn
-                ? 'linear-gradient(180deg, rgba(26,18,64,0.92), rgba(10,10,30,0.92))'
-                : 'linear-gradient(180deg, rgba(20,20,28,0.92), rgba(10,10,16,0.92))'),
-          border: `1px solid ${inBlockers ? '#a8740f' : (myTurn ? '#4c1d95' : '#2a2a36')}`,
-          borderRadius: 6,
-          color: '#ece1c7',
-          boxShadow: inBlockers
-            ? '0 0 14px rgba(240,179,42,0.25)'
-            : (myTurn ? '0 0 14px rgba(139,92,246,0.25)' : 'none'),
-        }}>
-          {inBlockers
-            ? <><CTA color="#f0b32a">Declare blockers:</CTA> click an untapped meme below to select it, then click an attacking opponent meme above. Press <i>Confirm Blocks</i> when done (or with no blockers to take damage).</>
-            : myTurn
-              ? (G.combat.attackers.length > 0
-                  ? <><CTA color="#f0b32a">{G.combat.attackers.length} attacker(s) selected.</CTA> Click another untapped meme to add, or press <i>Attack with {G.combat.attackers.length} meme(s)</i> to swing.</>
-                  : <><CTA color="#b896ff">Your main phase.</CTA> Play nodes, tap them for gas, cast cards. Click an untapped, non-sick meme to mark it as an attacker, then press <i>Attack</i>.</>)
-              : <>Waiting for opponent…</>}
-        </div>
-      )}
-
-      {notice && (
-        <div style={{ padding: '6px 10px', marginBottom: 6, fontSize: 12, background: '#3a0a0a', border: '1px solid #844', borderRadius: 4, color: '#fdd' }}>
-          {notice}
-        </div>
-      )}
-
-      {ctx.gameover && (
-        <div style={{ padding: 12, background: '#222', border: '1px solid #555', marginBottom: 8 }}>
-          {ctx.gameover.draw
-            ? <b>Draw! Both records +1 D.</b>
-            : <b>Winner: {ctx.gameover.winner === myId ? myName : oppName} — {ctx.gameover.winner === myId ? 'you got +1 W' : 'you got +1 L'}</b>}
-        </div>
-      )}
-
-      <WagerPayoutModal
-        gameover={ctx.gameover}
-        wager={G.wager}
-        myId={myId}
-        oppId={oppId}
-        myName={myName} oppName={oppName}
-        myProfile={myProfile} oppProfile={oppProfile}
-      />
-
-      <WinnerShareModal
-        gameover={ctx.gameover}
-        myId={myId}
-        myName={myName}
-      />
-
-      {/* Combat zone display */}
-      <CombatStrip G={G} ctx={ctx} myId={myId} />
-
-      {/* Playmat — sized to fit alongside hand without scrolling */}
-      <div style={{
-        margin: '8px auto',
-        width: '100%',
-        maxWidth: mobile ? '100%' : 'min(1280px, calc(100dvh - 280px))',
-      }}>
-        <div data-dropzone="battlefield">
-        <MobilePlaymatScaler enabled={mobile}>
-        <Playmat
-        me={me} opp={opp} myId={myId} oppId={oppId}
-        myName={myName} oppName={oppName}
-        myDeckCount={(G as any).deckCounts?.[myId]  ?? 0}
-        oppDeckCount={(G as any).deckCounts?.[oppId] ?? 0}
-        attackers={G.combat.attackers.map(a => a.memeUid)}
-        attackerSide={ctx.currentPlayer === myId ? 'me' : 'opp'}
-        blocks={G.combat.blocks}
-        selectedBlocker={blockSel.blockerUid}
-        memeTargetable={targetMode?.kind === 'meme' || targetMode?.kind === 'any'}
-        machineTargetable={targetMode?.kind === 'machine'}
-        playerTargetable={targetMode?.kind === 'any'}
-        onOppPlayerClick={() => pickTarget(oppId === '0' ? '__p0__' : '__p1__')}
-        onMyPlayerClick={()  => pickTarget(myId  === '0' ? '__p0__' : '__p1__')}
-        onNodeClick={uid => isActive && myTurn && !inBlockers && moves.tapNode(uid)}
-        onMyMemeClick={uid => {
-          if (targetMode?.kind === 'meme' || targetMode?.kind === 'any') pickTarget(uid);
-          else if (inBlockers) {
-            const m = me.memes.find(x => x.uid === uid); if (!m) return;
-            if (m.tapped) { flash(`That meme is tapped — can't block.`); return; }
-            setBlockSel({ blockerUid: uid });
-          } else if (myTurn) {
-            const m = me.memes.find(x => x.uid === uid); if (!m) return;
-            if (m.summoningSick) { flash(`${CARDS[m.defId].name} is summoning sick — can't attack until your next turn.`); return; }
-            if (m.tapped)        { flash(`${CARDS[m.defId].name} is tapped — can't attack.`); return; }
-            moves.declareAttacker(uid);
-          }
-        }}
-        onOppMemeClick={uid => {
-          if (targetMode?.kind === 'meme' || targetMode?.kind === 'any') { pickTarget(uid); return; }
-          if (inBlockers) {
-            // Assigning a block: must have a blocker selected and the clicked
-            // opponent meme must actually be an attacker.
-            if (!blockSel.blockerUid) { flash('Click one of your untapped memes first to select a blocker.'); return; }
-            if (!G.combat.attackers.some(a => a.memeUid === uid)) { flash('That opponent meme is not attacking — pick one of the attackers above.'); return; }
-            moves.declareBlocker(blockSel.blockerUid, uid);
-            setBlockSel({});
-          }
-        }}
-        onMachineClick={uid => { if (targetMode?.kind === 'machine') pickTarget(uid); }}
-      />
-      </MobilePlaymatScaler>
-      </div>
-      </div>
-
-      {/* Hand — curved fan layout on desktop, collapsed peek bar on mobile */}
-      {!mobile && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 11, opacity: 0.6, letterSpacing: 1, textTransform: 'uppercase', fontWeight: 700, textAlign: 'center', marginBottom: 4 }}>
-            ✋ Hand · {me.hand.length}
-          </div>
-          <div style={{
-            display: 'flex', flexWrap: 'nowrap',
-            overflowX: 'visible',
-            WebkitOverflowScrolling: 'touch',
-            paddingBottom: 0,
-            justifyContent: 'center', alignItems: 'flex-end',
-            minHeight: 160,
-            perspective: 1200,
-          }}>
-            {me.hand.map((id, i) => {
-              const n = me.hand.length;
-              const t = n === 1 ? 0 : (i - (n - 1) / 2) / Math.max(1, (n - 1) / 2);
-              const rot = t * 6;
-              const lift = Math.abs(t) * 8;
-              const overlap = -18;
-              return (
-                <div key={i} style={{
-                  transform: `translateY(${lift}px) rotate(${rot}deg)`,
-                  transformOrigin: '50% 100%',
-                  marginLeft: i === 0 ? 0 : overlap,
-                  transition: 'transform 0.18s ease',
-                  zIndex: selectedHand === i ? 10 : i,
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = `translateY(-14px) rotate(${rot * 0.4}deg) scale(1.08)`; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = `translateY(${lift}px) rotate(${rot}deg)`; }}
-                >
-                  <DraggableCard
-                    defId={id}
-                    onDrop={() => isActive && myTurn && !inBlockers && tryPlay(i)}
-                  >
-                    <CardFace
-                      defId={id}
-                      selected={selectedHand === i}
-                      pinOnTap
-                      onClick={() => isActive && myTurn && !inBlockers && tryPlay(i)}
-                    />
-                  </DraggableCard>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Mobile bottom action bar + hand drawer trigger */}
-      {mobile && (
-        <MobileActionBar
-          gas={me.gas}
-          handCount={me.hand.length}
-          onOpenHand={() => setHandOpen(true)}
-          attackerCount={G.combat.attackers.length}
-          canAttack={myTurn && !inBlockers && !ctx.gameover && !mulliganPhase && G.combat.attackers.length > 0}
-          onAttack={() => { Haptics.attack(); moves.confirmAttackers(); }}
-          canEndTurn={myTurn && !inBlockers && !ctx.gameover && !mulliganPhase}
-          onEndTurn={() => { Haptics.turn(); moves.passTurn(); }}
-          inBlockers={inBlockers}
-          onConfirmBlocks={() => { Haptics.attack(); moves.confirmBlocks(); }}
-          targetMode={!!targetMode}
-          onCancelTarget={() => { setSelectedHand(null); setTargetMode(null); }}
-        />
-      )}
-      {mobile && handOpen && (
-        <MobileHandSheet
-          hand={me.hand}
-          selectedIdx={selectedHand}
-          canPlay={isActive && myTurn && !inBlockers && !mulliganPhase}
-          onClose={() => setHandOpen(false)}
-          onPlay={(i) => { tryPlay(i); setHandOpen(false); }}
-        />
-      )}
-
-      {/* Action bar (desktop) — mobile uses the sticky bottom bar above */}
-      {!mobile && (
-      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <GasBar gas={me.gas} />
-        {myTurn && !inBlockers && (
-          <>
-            <button onClick={() => moves.confirmAttackers()} disabled={G.combat.attackers.length === 0}>
-              Attack with {G.combat.attackers.length} meme(s)
-            </button>
-            <button onClick={() => moves.passTurn()}>End Turn</button>
-          </>
-        )}
-        {inBlockers && (
-          <>
-            <button onClick={() => moves.confirmBlocks()}>Confirm Blocks</button>
-            <span style={{ fontSize: 12 }}>
-              {blockSel.blockerUid
-                ? `Blocker selected (${blockSel.blockerUid}). Click an attacking opponent meme above to assign it.`
-                : 'Click one of your untapped memes to block.'}
-            </span>
-          </>
-        )}
-        {targetMode && (
-          <button onClick={() => { setSelectedHand(null); setTargetMode(null); }}>Cancel target</button>
-        )}
-      </div>
-      )}
-
-      {/* Block assignment row */}
-      {inBlockers && blockSel.blockerUid && (
-        <div style={{ marginTop: 8, padding: 8, border: '1px dashed #888' }}>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Assign blocker {blockSel.blockerUid} to attacker:</div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {G.combat.attackers.map(a => (
-              <button key={a.memeUid} onClick={() => {
-                moves.declareBlocker(blockSel.blockerUid!, a.memeUid);
-                setBlockSel({});
-              }}>{a.memeUid}</button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Log */}
-      <details style={{ marginTop: 12 }}>
-        <summary style={{ cursor: 'pointer', opacity: 0.7 }}>Log ({G.log.length})</summary>
-        <pre style={{ fontSize: 11, maxHeight: 200, overflow: 'auto', background: '#000', padding: 8 }}>
-          {G.log.slice(-80).join('\n')}
-        </pre>
-      </details>
-
-      {/* Desktop-only floating action log on the right rail. Mirrors G.log
-          but always visible and auto-scrolls so the player can follow what
-          the bot/opponent just did. */}
-      {!mobile && <ActionLogRail entries={G.log} />}
-
-      {/* Chat */}
-      <ChatPanel
-        myId={myId}
-        messages={chatMessages ?? []}
-        sendChatMessage={sendChatMessage}
-      />
-
-      {/* Proximity voice with your opponent (PeerJS WebRTC). Skipped in solo. */}
-      {matchID && playerID && !isSolo && (
-        <VoiceChat matchID={matchID} playerID={playerID} displayName={myName} />
-      )}
-    </div>
-  );
-}
-
-function ActionLogRail({ entries }: { entries: string[] }) {
-  const scrollRef = React.useRef<HTMLDivElement>(null);
-  // Auto-scroll to bottom whenever new entries arrive.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [entries.length]);
-
-  // Tint key events so the user can scan turn boundaries / combat / damage.
-  function colorFor(line: string): string {
-    if (line.startsWith('— Turn')) return '#a78bfa';
-    if (/attack|damage|destroyed|kills/i.test(line)) return '#fb7185';
-    if (/draws|gains|heals/i.test(line)) return '#6ee7b7';
-    if (/mulligan|keeps/i.test(line)) return '#fcd34d';
-    return '#cbd5e1';
-  }
-
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 80, right: 16, bottom: 100,
-      width: 280, zIndex: 60,
-      background: 'rgba(10, 10, 30, 0.78)',
-      border: '1px solid #4c1d95',
-      borderRadius: 8,
-      boxShadow: '0 0 14px rgba(76, 29, 149, 0.4)',
-      backdropFilter: 'blur(4px)',
-      display: 'flex', flexDirection: 'column',
-      fontFamily: '"EB Garamond", Garamond, serif',
-    }}>
-      <div style={{
-        padding: '8px 12px',
-        borderBottom: '1px solid #4c1d95',
-        fontFamily: '"Cinzel", "Times New Roman", serif',
-        fontSize: 12, letterSpacing: 2, textTransform: 'uppercase',
-        color: '#c4b5fd', fontWeight: 700,
-      }}>
-        Action Log
-      </div>
-      <div ref={scrollRef} style={{
-        flex: 1, overflow: 'auto', padding: '8px 12px',
-        fontSize: 12, lineHeight: 1.45,
-      }}>
-        {entries.length === 0 ? (
-          <div style={{ opacity: 0.4 }}>(No actions yet)</div>
-        ) : entries.slice(-200).map((line, i) => (
-          <div key={i} style={{ color: colorFor(line), marginBottom: 2, wordBreak: 'break-word' }}>
-            {line}
+    <div>
+      <div style={{ fontSize: 9, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1 }}>{label}</div>
+      <div style={{ display: 'flex', gap: ZONE_GAP }}>
+        {instances.map((inst, i) => (
+          <div key={i} onClick={() => onClickZone?.(i, inst)}>
+            <MiniCard inst={inst} />
           </div>
         ))}
       </div>
@@ -1077,823 +153,116 @@ function ActionLogRail({ entries }: { entries: string[] }) {
   );
 }
 
-function ChatPanel({
-  myId, messages, sendChatMessage,
+function GraveyardSlot({ pile, label }: { pile: string[]; label: string }) {
+  const top = pile[pile.length - 1];
+  const def = top ? CARDS[top] : null;
+  return (
+    <div style={{ width: CARD_W, height: CARD_H, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ fontSize: 9, color: '#aaa', textAlign: 'center' }}>{label} ({pile.length})</div>
+      <div style={{
+        flex: 1, border: '1px dashed #555', borderRadius: 6,
+        background: def ? COLOR_META[def.color].hex : 'rgba(255,255,255,0.04)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 10, fontWeight: 800,
+      }}>
+        {def ? def.name : '—'}
+      </div>
+    </div>
+  );
+}
+
+// ── Hand bar ────────────────────────────────────────────────────────────────
+
+function HandBar({
+  hand, opponent = false, selected, onSelect,
 }: {
-  myId: string;
-  messages: Array<{ id: string; sender: string; payload: any }>;
-  sendChatMessage?: (msg: any) => void;
+  hand: string[];
+  opponent?: boolean;
+  selected?: number | null;
+  onSelect?: (i: number) => void;
 }) {
-  const mobile = useIsMobile();
-  const [draft, setDraft] = useState('');
-  const [open, setOpen] = useState(!mobile);
-  const [lastSeen, setLastSeen] = useState(0);
-  const listRef = React.useRef<HTMLDivElement>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    if (open && listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-    if (open) setLastSeen(messages.length);
-  }, [messages.length, open]);
-
-  const unread = Math.max(0, messages.length - lastSeen);
-
-  function send() {
-    const text = draft.trim();
-    if (!text || !sendChatMessage) return;
-    sendChatMessage({ text });
-    setDraft('');
-  }
-
-  // Collapsed bubble — small floating button bottom-right.
-  if (!open) {
-    return (
-      <button
-        onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-        style={{
-          position: 'fixed',
-          left: mobile ? 10 : 16,
-          bottom: mobile ? 84 : 16, // sit above the mobile action bar
-          zIndex: 90,
-          width: 48, height: 48, borderRadius: 24,
-          background: '#1a1a1a', color: '#eee',
-          border: '1px solid #444',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.5)',
-          cursor: 'pointer', fontSize: 20,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-        title="Open chat"
-      >
-        💬
-        {unread > 0 && (
-          <span style={{
-            position: 'absolute', top: -4, right: -4,
-            background: '#e33', color: '#fff', fontSize: 10, fontWeight: 800,
-            borderRadius: 10, minWidth: 18, height: 18, padding: '0 5px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            border: '1px solid #000',
-          }}>{unread > 9 ? '9+' : unread}</span>
-        )}
-      </button>
-    );
-  }
-
   return (
     <div style={{
-      position: 'fixed',
-      left: mobile ? 8 : 16,
-      bottom: mobile ? 76 : 16,
-      zIndex: 90,
-      width: mobile ? 'calc(100vw - 16px)' : 320,
-      maxWidth: 'calc(100vw - 16px)',
-      border: '1px solid #444', borderRadius: 8, background: '#161616',
-      boxShadow: '0 6px 22px rgba(0,0,0,0.55)',
-      display: 'flex', flexDirection: 'column',
+      display: 'flex', gap: 4, padding: 6, justifyContent: 'center',
+      background: opponent ? 'rgba(255,80,80,0.05)' : 'rgba(80,200,255,0.05)',
+      borderRadius: 6, minHeight: CARD_H + 12, flexWrap: 'wrap',
     }}>
-      <div style={{
-        padding: '6px 10px', background: '#222', fontSize: 12, fontWeight: 700,
-        color: '#ccc', borderBottom: '1px solid #333',
-        borderTopLeftRadius: 8, borderTopRightRadius: 8,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <span>💬 Chat</span>
-        <button
-          onClick={() => setOpen(false)}
-          style={{
-            background: 'transparent', border: 'none', color: '#aaa',
-            cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: '0 4px',
-          }}
-          title="Hide chat"
-        >×</button>
-      </div>
-      <div ref={listRef} style={{ height: mobile ? 180 : 220, overflowY: 'auto', padding: 8, fontSize: 12, fontFamily: 'system-ui' }}>
-        {messages.length === 0 && (
-          <div style={{ color: '#666', fontStyle: 'italic' }}>No messages yet. Talk smack.</div>
-        )}
-        {messages.map(m => {
-          const mine = m.sender === myId;
-          const text = typeof m.payload === 'string'
-            ? m.payload
-            : (m.payload && typeof m.payload.text === 'string' ? m.payload.text : JSON.stringify(m.payload));
+      {hand.map((id, i) => {
+        const def = id === 'hidden' ? null : CARDS[id];
+        if (opponent || !def) {
           return (
-            <div key={m.id} style={{ marginBottom: 4, color: mine ? '#9f9' : '#9cf' }}>
-              <span style={{ fontWeight: 700 }}>P{m.sender}{mine ? ' (you)' : ''}:</span>{' '}
-              <span style={{ color: '#eee' }}>{text}</span>
-            </div>
+            <div key={i} style={{
+              width: CARD_W, height: CARD_H, background: '#1a1b2a',
+              border: '1px solid #000', borderRadius: 6,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444',
+              fontSize: 20, fontWeight: 800,
+            }}>?</div>
           );
-        })}
-      </div>
-      <div style={{ display: 'flex', gap: 6, padding: 6, borderTop: '1px solid #333', background: '#1a1a1a', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }}>
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') send(); }}
-          placeholder={sendChatMessage ? 'Type a message and press Enter' : 'Chat unavailable'}
-          disabled={!sendChatMessage}
-          style={{
-            flex: 1, padding: '6px 8px', background: '#000', color: '#eee',
-            border: '1px solid #444', borderRadius: 4, fontFamily: 'system-ui', fontSize: 12,
-          }}
-        />
-        <button
-          onClick={send}
-          disabled={!sendChatMessage || !draft.trim()}
-          style={{
-            padding: '6px 14px', background: '#2a7', color: '#fff',
-            border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700, fontSize: 12,
-          }}
-        >Send</button>
-      </div>
-    </div>
-  );
-}
-
-function WagerPayoutModal({
-  gameover, wager, myId, oppId, myName, oppName, myProfile, oppProfile,
-}: {
-  gameover: any;
-  wager: GState['wager'];
-  myId: string; oppId: string;
-  myName: string; oppName: string;
-  myProfile: Profile | null; oppProfile: Profile | null;
-}) {
-  const [dismissed, setDismissed] = useState(false);
-  useEffect(() => { setDismissed(false); }, [gameover?.winner, gameover?.draw]);
-  if (!gameover || !wager || wager.kind !== 'master' || !wager.amount) return null;
-  if (gameover.draw) return null;
-  if (dismissed) return null;
-
-  const iWon = gameover.winner === myId;
-  const winnerName = iWon ? myName : oppName;
-  const winnerProfile = iWon ? myProfile : oppProfile;
-  const winnerWallet = winnerProfile?.walletAddress || null;
-  const winnerChain = (winnerProfile?.walletChain || '').toUpperCase() || 'WALLET';
-  const amount = wager.amount;
-  const loserId = iWon ? oppId : myId;
-  void loserId;
-
-  async function copy(text: string) {
-    try { await navigator.clipboard.writeText(text); } catch {}
-  }
-
-  return (
-    <div onClick={() => setDismissed(true)} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
-      fontFamily: '"EB Garamond", Garamond, "Times New Roman", serif',
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'linear-gradient(180deg, #1a1240 0%, #0a0a1e 100%)',
-        border: '2px solid #4c1d95', borderRadius: 10,
-        padding: 24, width: 'min(520px, calc(100vw - 24px))',
-        boxShadow: '0 0 40px rgba(139,92,246,0.45)',
-        color: '#ece1c7',
-      }}>
-        <div style={{
-          fontFamily: '"Cinzel", "Times New Roman", serif',
-          fontSize: 20, fontWeight: 800, letterSpacing: 2,
-          color: '#f0b32a', textTransform: 'uppercase',
-          textShadow: '0 0 14px rgba(240,179,42,0.45)',
-          textAlign: 'center', marginBottom: 4,
-        }}>
-          {iWon ? 'Victory' : 'Defeat'}
-        </div>
-        <div style={{ textAlign: 'center', color: '#b896ff', fontSize: 13, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 16 }}>
-          Wagered Match · {amount} $MASTER
-        </div>
-
-        <div style={{
-          padding: 14, background: 'rgba(0,0,0,0.45)',
-          border: '1px solid rgba(240,179,42,0.4)', borderRadius: 6, marginBottom: 14,
-        }}>
-          <div style={{ fontSize: 12, color: '#a99878', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-            Winner
-          </div>
-          <div style={{
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-            fontSize: 18, fontWeight: 700, color: '#ffd66e', marginBottom: 10,
-          }}>{winnerName}</div>
-
-          <div style={{ fontSize: 12, color: '#a99878', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-            {winnerChain} Wallet
-          </div>
-          {winnerWallet ? (
-            <div style={{
-              display: 'flex', gap: 8, alignItems: 'center',
-              padding: '8px 10px', background: '#000',
-              border: '1px solid #4c1d95', borderRadius: 4,
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-              fontSize: 12, color: '#ece1c7', wordBreak: 'break-all',
-            }}>
-              <span style={{ flex: 1 }}>{winnerWallet}</span>
-              <button onClick={() => copy(winnerWallet)} style={{
-                padding: '4px 10px', fontSize: 11, fontWeight: 800,
-                background: '#4c1d95', color: '#fff', border: '1px solid #6b2fc9',
-                borderRadius: 3, cursor: 'pointer', letterSpacing: 0.5, textTransform: 'uppercase',
-              }}>Copy</button>
-            </div>
-          ) : (
-            <div style={{
-              padding: '8px 10px', background: 'rgba(120,80,20,0.25)',
-              border: '1px solid #a8740f', borderRadius: 4,
-              fontSize: 12, color: '#f0b32a',
-            }}>Winner has no wallet linked to their profile.</div>
-          )}
-        </div>
-
-        <div style={{
-          fontSize: 15, textAlign: 'center', color: '#ece1c7',
-          padding: '10px 6px', lineHeight: 1.45,
-        }}>
-          {iWon
-            ? <>You won the wager. Ask <b style={{ color: '#ffd66e' }}>{oppName}</b> to send you <b style={{ color: '#ffd66e' }}>{amount} $MASTER</b>.</>
-            : <>Please pay the winner <b style={{ color: '#ffd66e' }}>{amount} $MASTER</b>.</>}
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
-          <button onClick={() => setDismissed(true)} style={{
-            padding: '8px 16px', fontWeight: 800, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase',
-            background: 'linear-gradient(180deg, #f0b32a, #a8740f)', color: '#1a1408',
-            border: '1px solid #6a5520', borderRadius: 4, cursor: 'pointer',
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-          }}>Close</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function WinnerShareModal({ gameover, myId, myName }: { gameover: any; myId: string; myName: string }) {
-  const [dismissed, setDismissed] = useState(false);
-  useEffect(() => { setDismissed(false); }, [gameover?.winner, gameover?.draw]);
-  if (!gameover || gameover.draw) return null;
-  if (gameover.winner !== myId) return null;
-  if (dismissed) return null;
-
-  const siteUrl = (typeof window !== 'undefined' ? window.location.origin : 'https://www.masterstcg.com');
-  const imgUrl = `${siteUrl}/share-win.jpg`;
-  const tweetText = `I just won in Memetic Masters TCG! ⚔️\n\nPlay the 5-chain meme card game at ${siteUrl}`;
-  const intentUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
-
-  async function downloadImage() {
-    try {
-      const r = await fetch('/share-win.jpg');
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'memetic-masters-win.jpg';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      window.open('/share-win.jpg', '_blank');
-    }
-  }
-
-  return (
-    <div onClick={() => setDismissed(true)} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 199,
-      fontFamily: '"EB Garamond", Garamond, "Times New Roman", serif',
-      padding: 12,
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'linear-gradient(180deg, #1a1240 0%, #0a0a1e 100%)',
-        border: '2px solid #4c1d95', borderRadius: 10,
-        padding: 20, width: 'min(560px, calc(100vw - 24px))',
-        maxHeight: 'calc(100vh - 24px)', overflowY: 'auto',
-        boxShadow: '0 0 40px rgba(139,92,246,0.45)',
-        color: '#ece1c7',
-      }}>
-        <div style={{
-          fontFamily: '"Cinzel", "Times New Roman", serif',
-          fontSize: 22, fontWeight: 800, letterSpacing: 2,
-          color: '#f0b32a', textTransform: 'uppercase',
-          textShadow: '0 0 14px rgba(240,179,42,0.45)',
-          textAlign: 'center', marginBottom: 4,
-        }}>Victory, {myName}</div>
-        <div style={{
-          textAlign: 'center', color: '#b896ff',
-          fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 14,
-        }}>Share your win</div>
-
-        <img src={imgUrl} alt="I just won in Memetic Masters"
-          style={{
-            display: 'block', width: '100%', height: 'auto',
-            borderRadius: 6, border: '1px solid rgba(240,179,42,0.4)',
-            marginBottom: 12,
-          }}
-        />
-
-        <div style={{
-          fontSize: 13, color: '#cdbf99', lineHeight: 1.45,
-          padding: '0 4px 12px', textAlign: 'center',
-        }}>
-          Click <b style={{ color: '#ffd66e' }}>Share on X</b> to open a pre-filled post,
-          then attach the downloaded image.
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <a href={intentUrl} target="_blank" rel="noopener noreferrer" style={{
-            padding: '10px 18px', fontWeight: 800, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase',
-            background: '#000', color: '#fff', border: '1px solid #ffd66e', borderRadius: 4,
-            textDecoration: 'none', cursor: 'pointer',
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-          }}>Share on X</a>
-          <button onClick={downloadImage} style={{
-            padding: '10px 18px', fontWeight: 800, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase',
-            background: 'linear-gradient(180deg, #4c1d95, #2a0f5a)', color: '#ece1c7',
-            border: '1px solid #6b2fc9', borderRadius: 4, cursor: 'pointer',
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-          }}>Download Image</button>
-          <button onClick={() => setDismissed(true)} style={{
-            padding: '10px 18px', fontWeight: 800, fontSize: 13, letterSpacing: 1, textTransform: 'uppercase',
-            background: 'linear-gradient(180deg, #f0b32a, #a8740f)', color: '#1a1408',
-            border: '1px solid #6a5520', borderRadius: 4, cursor: 'pointer',
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-          }}>Close</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CTA({ color, children }: { color: string; children: React.ReactNode }) {
-  return <b style={{
-    fontFamily: '"Cinzel", "Times New Roman", serif',
-    color, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: 700,
-    textShadow: `0 0 6px ${color}55`,
-  }}>{children}</b>;
-}
-
-function PlayerHeaderTargetable({ label, clickable, onClick }: { label: string; clickable: boolean; onClick: () => void }) {
-  return (
-    <div onClick={clickable ? onClick : undefined}
-      style={{
-        padding: '4px 8px', margin: '4px 0',
-        background: clickable ? '#553' : '#222',
-        cursor: clickable ? 'pointer' : 'default',
-        border: '1px solid #555', fontWeight: 700,
-      }}>
-      {label} {clickable && <span style={{fontSize:11, opacity:0.7}}>(click to target)</span>}
-    </div>
-  );
-}
-
-// ── Playmat — positions zones over the splash mat image ─────────────────────
-/**
- * Beginner rules columns shown either side of the playmat on desktop.
- * Two halves so each side fits a roughly 1100px-tall playmat without scrolling.
- */
-function RulesPanel({ side }: { side: 'left' | 'right' }) {
-  const sections: Array<{ heading: string; body: React.ReactNode }> = side === 'left'
-    ? [
-        {
-          heading: 'Goal',
-          body: 'Reduce your opponent\u2019s life from 20 to 0. You win when they hit zero (or run out of cards in their deck and can\u2019t draw).',
-        },
-        {
-          heading: 'Gas (mana)',
-          body: 'Every non-Node card has a cost shown by colored pips: Orange\u00A0BnB, Purple\u00A0Solana, Red\u00A0AVAX, White\u00A0Ethereum, Black\u00A0XRP. You pay that cost by tapping your Nodes.',
-        },
-        {
-          heading: 'Nodes',
-          body: 'Nodes are your land. Once per turn you may play one Node from hand — it enters untapped. Click it any time on your turn to tap it for 1 gas of its color. Nodes untap at the start of your next turn.',
-        },
-        {
-          heading: 'The 4 card types',
-          body: (
-            <>
-              <div><b style={{ color: '#ffd66e' }}>Node</b> — land, generates 1 gas of its color when tapped.</div>
-              <div><b style={{ color: '#ffd66e' }}>Meme</b> — creature with Power/Toughness. Attacks and blocks.</div>
-              <div><b style={{ color: '#ffd66e' }}>Machine</b> — artifact. Stays in play and gives a constant effect.</div>
-              <div><b style={{ color: '#ffd66e' }}>Move</b> — single-use spell. Resolves once then goes to graveyard.</div>
-            </>
-          ),
-        },
-        {
-          heading: 'Summoning sickness',
-          body: 'Memes you just played CAN\u2019T attack the turn they enter. They can block right away though. A small SICK badge marks them.',
-        },
-        {
-          heading: 'Turn order',
-          body: (
-            <>
-              <div>1. <b style={{ color: '#ffd66e' }}>Untap</b> — your Nodes and Memes untap.</div>
-              <div>2. <b style={{ color: '#ffd66e' }}>Draw</b> — draw 1 card.</div>
-              <div>3. <b style={{ color: '#ffd66e' }}>Main</b> — play 1 Node, summon Memes, deploy Machines, cast Moves, tap Nodes for gas.</div>
-              <div>4. <b style={{ color: '#ffd66e' }}>Combat</b> — pick attackers, opponent picks blockers, damage resolves.</div>
-              <div>5. <b style={{ color: '#ffd66e' }}>End</b> — press <i>Pass Turn</i>.</div>
-            </>
-          ),
-        },
-      ]
-    : [
-        {
-          heading: 'Attacking',
-          body: 'During your turn click an untapped, non-sick meme to add it to the attack. Press the Attack button to swing — attackers tap.',
-        },
-        {
-          heading: 'Blocking',
-          body: 'When opponent attacks, click ONE of your untapped memes to select it as a blocker, then click the attacker you want it to block. Repeat for each block. Press Confirm Blocks when done.',
-        },
-        {
-          heading: 'Damage',
-          body: 'In a fight, both memes deal their Power to each other. If a meme takes damage ≥ its Toughness it dies and goes to the graveyard. Unblocked attackers hit the defender\u2019s life total directly.',
-        },
-        {
-          heading: 'Hand limit',
-          body: 'No hand size limit during your turn. Drawing from an empty deck means you lose. Start with 7 cards.',
-        },
-        {
-          heading: 'Machines',
-          body: 'Machines are permanent. As long as one is on the battlefield, its effect is active — e.g. "your memes get +1/+1." Stack multiple for stronger effects.',
-        },
-        {
-          heading: 'Moves',
-          body: 'Casting a Move resolves its effect right away, then sends it to the graveyard. Targeted Moves will ask you to click a target (meme, machine, or player).',
-        },
-        {
-          heading: 'First-game tips',
-          body: (
-            <>
-              <div>• Play a Node every turn if you can — gas is everything.</div>
-              <div>• Don\u2019t over-extend into removal Moves; keep one defender back.</div>
-              <div>• Hover any card to see a big preview with its full text.</div>
-              <div>• Tap multiple nodes BEFORE casting so you can afford the spell.</div>
-            </>
-          ),
-        },
-      ];
-
-  return (
-    <aside style={{
-      flex: '0 0 210px',
-      maxWidth: 230,
-      alignSelf: 'stretch',
-      padding: 12,
-      background: 'linear-gradient(180deg, rgba(26,18,64,0.92) 0%, rgba(10,10,30,0.92) 100%)',
-      border: '1px solid #4c1d95',
-      borderRadius: 8,
-      boxShadow: '0 0 22px rgba(139,92,246,0.25), inset 0 0 24px rgba(0,0,0,0.45)',
-      color: '#ece1c7',
-      fontSize: 12,
-      lineHeight: 1.45,
-      fontFamily: '"EB Garamond", Garamond, "Times New Roman", serif',
-      maxHeight: '1100px',
-      overflowY: 'auto',
-    }}>
-      <div style={{
-        fontFamily: '"Cinzel", "Times New Roman", serif',
-        fontWeight: 800, fontSize: 13, letterSpacing: 2,
-        color: '#f0b32a', textTransform: 'uppercase',
-        textShadow: '0 0 8px rgba(240,179,42,0.4)',
-        borderBottom: '1px solid rgba(240,179,42,0.35)', paddingBottom: 6, marginBottom: 10,
-        textAlign: 'center',
-      }}>
-        {side === 'left' ? 'How to Play · I' : 'How to Play · II'}
-      </div>
-      {sections.map((s, i) => (
-        <div key={i} style={{ marginBottom: 12 }}>
-          <div style={{
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-            fontWeight: 700, fontSize: 11.5, letterSpacing: 1.5,
-            color: '#b896ff', textTransform: 'uppercase',
-            marginBottom: 4,
-          }}>{s.heading}</div>
-          <div style={{ color: '#ece1c7' }}>{s.body}</div>
-        </div>
-      ))}
-    </aside>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cascade-stack rendering for Nodes. When a player controls 3+ copies of the
-// same Node def, we collapse them visually into one tile with ghost layers
-// behind it. Clicking the stack taps the next available untapped node.
-// ─────────────────────────────────────────────────────────────────────────────
-function NodeStack({
-  group, onClick,
-}: {
-  group: Instance[];
-  onClick?: (uid: string) => void;
-}) {
-  // Untapped nodes float to the front so the click target is always live.
-  const sorted = [...group].sort((a, b) => Number(a.tapped) - Number(b.tapped));
-  const top = sorted[0];
-  const tappedCount = group.filter(g => g.tapped).length;
-  const allTapped = tappedCount === group.length;
-  const ghostLayers = Math.min(3, group.length - 1);
-  const total = group.length;
-
-  const handleClick = () => {
-    if (allTapped || !onClick) return;
-    const target = sorted.find(g => !g.tapped);
-    if (target) onClick(target.uid);
-  };
-
-  return (
-    <div style={{
-      position: 'relative',
-      width: 68, height: 96,
-      // Reserve room for the offset ghost layers so adjacent zones don't overlap us.
-      marginRight: 4 * ghostLayers,
-      marginBottom: 4 * ghostLayers,
-    }}
-    title={allTapped
-      ? `All ${total} tapped — wait for next turn.`
-      : `×${total} stacked (${tappedCount} tapped). Click to tap the next available.`}
-    >
-      {/* Ghost copies of the stack — purely cosmetic, slight rotation + offset. */}
-      {Array.from({ length: ghostLayers }).map((_, i) => {
-        const depth = ghostLayers - i;       // 1..ghostLayers, deepest first
-        const def = CARDS[top.defId];
-        if (!def) return null;
+        }
         const meta = COLOR_META[def.color];
-        const rot  = (i % 2 === 0 ? 1 : -1) * 1.5 * (depth);
+        const isSel = selected === i;
         return (
-          <div key={i} aria-hidden style={{
-            position: 'absolute',
-            left: 4 * depth, top: 4 * depth,
-            width: 68, height: 96, borderRadius: 6,
-            background: meta.hex, opacity: 0.55,
-            border: '1px solid #000',
-            boxShadow: '0 2px 6px #000a',
-            transform: `rotate(${rot}deg)`,
-            pointerEvents: 'none',
-            zIndex: 0,
-          }} />
+          <CardHover key={i} defId={id}>
+            <div onClick={() => onSelect?.(i)}
+              style={{
+                width: CARD_W, height: CARD_H, cursor: 'pointer',
+                background: meta.hex, color: meta.ink,
+                border: '1px solid #000', borderRadius: 6,
+                boxShadow: isSel ? '0 0 0 3px #facc15, 0 4px 12px rgba(0,0,0,0.6)' : '0 4px 12px rgba(0,0,0,0.6)',
+                display: 'flex', flexDirection: 'column', overflow: 'hidden', fontSize: 10,
+              }}>
+              <div style={{
+                padding: '3px 4px', fontSize: 9, fontWeight: 800, lineHeight: 1.1,
+                background: 'rgba(0,0,0,0.25)', whiteSpace: 'nowrap',
+                overflow: 'hidden', textOverflow: 'ellipsis',
+              }}>{def.name}</div>
+              <div style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(0,0,0,0.15)',
+              }}>
+                {def.image ? (
+                  <img src={def.image} alt={def.name}
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ fontSize: 16, fontWeight: 900, color: meta.ink }}>{meta.glyph}</div>
+                )}
+              </div>
+              <div style={{
+                padding: '2px 4px', fontSize: 9, background: 'rgba(0,0,0,0.6)', color: '#fff', textAlign: 'right',
+              }}>{statBadge(def)}</div>
+            </div>
+          </CardHover>
         );
       })}
-      {/* Top live card */}
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        <MiniCard
-          defId={top.defId}
-          instance={top}
-          faceUp
-          onClick={onClick && !allTapped ? handleClick : undefined}
-        />
-      </div>
-      {/* Count badge */}
-      <div style={{
-        position: 'absolute',
-        right: -6, top: -6,
-        background: allTapped ? '#7a3030' : '#1e7a3a',
-        color: '#fff',
-        border: '1px solid #000',
-        borderRadius: 10,
-        padding: '1px 6px',
-        fontSize: 10, fontWeight: 800,
-        letterSpacing: 0.5,
-        boxShadow: '0 1px 4px #000a',
-        zIndex: 2,
-        pointerEvents: 'none',
-        whiteSpace: 'nowrap',
-      }}>
-        ×{total}{tappedCount > 0 && <span style={{ opacity: 0.85, marginLeft: 3 }}>({tappedCount}⤓)</span>}
-      </div>
     </div>
   );
 }
 
-/** Group nodes by defId; collapse same-def groups of 3+ into a NodeStack tile. */
-function renderNodes(
-  nodes: Instance[],
-  onNodeClick?: (uid: string) => void,
-): React.ReactNode {
-  const groups = new Map<string, Instance[]>();
-  // Preserve original visual order: each defId's first appearance fixes its slot.
-  for (const inst of nodes) {
-    if (!groups.has(inst.defId)) groups.set(inst.defId, []);
-    groups.get(inst.defId)!.push(inst);
-  }
-  const out: React.ReactNode[] = [];
-  for (const [defId, group] of groups) {
-    if (group.length >= 3) {
-      out.push(<NodeStack key={`stack-${defId}`} group={group} onClick={onNodeClick} />);
-    } else {
-      for (const inst of group) {
-        out.push(
-          <MiniCard
-            key={inst.uid}
-            defId={inst.defId}
-            instance={inst}
-            faceUp
-            onClick={onNodeClick ? () => onNodeClick(inst.uid) : undefined}
-          />
-        );
-      }
-    }
-  }
-  return out;
-}
+// ── Playmat (image-backed YGO mat with positioned zone overlays) ───────────
 
-function collectAurasOn(
-  me: GState['players'][string],
-  opp: GState['players'][string],
-  memeUid: string,
-): Array<{ defId: string; effect?: string }> {
-  const out: Array<{ defId: string; effect?: string }> = [];
-  for (const m of me.machines) {
-    if (m.attachedTo === memeUid) out.push({ defId: m.defId, effect: CARDS[m.defId]?.effect });
-  }
-  for (const m of opp.machines) {
-    if (m.attachedTo === memeUid) out.push({ defId: m.defId, effect: CARDS[m.defId]?.effect });
-  }
-  return out;
-}
-/**
- * UI-side pump bonus from auras (cosmetic; the server is the source of truth).
- * Only the symmetric +2/+2 aura tweaks the displayed P/T — asymmetric sword /
- * shield auras still apply on the backend, but are signaled in the UI via the
- * 🔮 chip count rather than tweaking one stat.
- */
-function auraPowerForUI(auras: Array<{ effect?: string }>): number {
-  let n = 0;
-  for (const a of auras) {
-    if (a.effect === 'aura_+2+2') n += 2;
-  }
-  return n;
-}
+const PLAYMAT_BG = '/playmat.jpg';
+const PLAYMAT_ASPECT = 2000 / 1615;
 
-function Playmat(props: {
-  me: GState['players'][string];
-  opp: GState['players'][string];
-  myId: string; oppId: string;
-  myDeckCount: number; oppDeckCount: number;
-  attackers: string[]; attackerSide: 'me' | 'opp';
-  blocks: Record<string, string[]>;
-  selectedBlocker?: string;
-  memeTargetable: boolean; machineTargetable: boolean; playerTargetable: boolean;
-  onOppPlayerClick: () => void; onMyPlayerClick: () => void;
-  onNodeClick: (uid: string) => void;
-  onMyMemeClick: (uid: string) => void;
-  onOppMemeClick: (uid: string) => void;
-  onMachineClick: (uid: string) => void;
-  myName?: string; oppName?: string;
-}) {
-  const {
-    me, opp, myId, oppId, myDeckCount, oppDeckCount,
-    attackers, attackerSide, blocks, selectedBlocker,
-    memeTargetable, machineTargetable, playerTargetable,
-    onOppPlayerClick, onMyPlayerClick,
-    onNodeClick, onMyMemeClick, onOppMemeClick, onMachineClick,
-    myName, oppName,
-  } = props;
+// Slot grid percentages — calibrated to the playmat image's visible slots.
+const COL = [2.5, 15.5, 28.5, 41.5, 54.5, 67.5, 80.5];
+const COL_W = 11.5;
+const ROW = { oppST: 2.5, oppMZ: 22, mid: 42, myMZ: 60, myST: 80 };
+const ROW_H = 17;
+// Extra Monster Zone slots sit between MZ columns 1-2 and 3-4 (centered).
+const EMZ_L_LEFT = 31;
+const EMZ_R_LEFT = 57;
+const EMZ_W = 12;
+// Banished slots — narrow tiles outside the 7-column grid on the middle row.
+const BAN_W = 5;
 
-  const mePump  = me.machines.filter(m => CARDS[m.defId]?.effect === 'pump_all_+1+1' && !m.attachedTo).length;
-  const oppPump = opp.machines.filter(m => CARDS[m.defId]?.effect === 'pump_all_+1+1' && !m.attachedTo).length;
-
-  // Zone rectangles in percentage of the mat (left, top, width, height).
-  // Tuned to match the labels on /playmat.png.
-  const Z = {
-    // Opponent (top half, rendered rotated 180° so cards face them)
-    oppGrave:    { left: 1,  top: 1,  w: 13, h: 18 },
-    oppNodes:    { left: 15, top: 1,  w: 70, h: 18 },
-    oppDeck:     { left: 86, top: 1,  w: 13, h: 18 }, // draw deck
-    oppMachines: { left: 1,  top: 20, w: 13, h: 17 },
-    oppBattle:   { left: 15, top: 20, w: 70, h: 25 }, // memes / battlefield
-    oppMaindeck: { left: 86, top: 20, w: 13, h: 17 }, // decorative
-    oppLife:     { left: 86, top: 38, w: 13, h: 7  },
-    // Me (bottom half)
-    myLife:      { left: 1,  top: 55, w: 13, h: 7  },
-    myBattle:    { left: 15, top: 55, w: 70, h: 25 }, // memes / battlefield
-    myMachines:  { left: 86, top: 62, w: 13, h: 17 },
-    myMaindeck:  { left: 1,  top: 62, w: 13, h: 17 }, // decorative
-    myDeck:      { left: 1,  top: 80, w: 13, h: 18 }, // draw deck
-    myNodes:     { left: 15, top: 80, w: 70, h: 18 },
-    myGrave:     { left: 86, top: 80, w: 13, h: 18 },
-  };
-
-  return (
-    <div style={{
-      position: 'relative',
-      width: '100%',
-      maxWidth: 'min(1280px, calc(100dvh - 280px))',
-      aspectRatio: '1 / 1',
-      margin: '8px auto', borderRadius: 10, overflow: 'hidden',
-      boxShadow: '0 0 30px #000a inset, 0 4px 24px #000c',
-      isolation: 'isolate',
-    }}>
-      {/* Background image — blurred + darkened so cards pop */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: 'url(/playmat.png)', backgroundSize: 'cover', backgroundPosition: 'center',
-        filter: 'blur(2px) brightness(0.45) saturate(0.7)',
-        zIndex: 0,
-      }} />
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 100%)',
-        zIndex: 0,
-      }} />
-      <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
-      {/* ─── OPPONENT SIDE (rotated for face-to-face feel) ─── */}
-      <ZoneSlot rect={Z.oppGrave} icon="☠️" label={`Graveyard (${opp.graveyard.length})`} compactLabel={`☠️ ${opp.graveyard.length}`} rotated>
-        {opp.graveyard.slice(-1).map((id, i) => <MiniCard key={i} defId={id} faceUp />)}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.oppNodes} icon="🌐" label={`Opp Nodes (${opp.nodes.length})`} compactLabel={`🌐 Nodes · ${opp.nodes.length}`} rotated>
-        {renderNodes(opp.nodes)}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.oppDeck} icon="📚" label={`Deck (${oppDeckCount})`} compactLabel={`📚 ${oppDeckCount}`} rotated>
-        {oppDeckCount > 0 && <MiniCard faceDown />}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.oppMaindeck} icon="✋" label={`Hand (${opp.hand.length})`} compactLabel={`✋ ${opp.hand.length}`} rotated>
-        {opp.hand.length > 0 && (
-          <div style={{ color: '#fff', fontSize: 14, fontWeight: 700, textShadow: '0 1px 4px #000' }}>
-            🂠 × {opp.hand.length}
-          </div>
-        )}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.oppMachines} icon="⚙️" label={`Machines (${opp.machines.filter(m => !m.attachedTo).length})`} compactLabel={`⚙️ ${opp.machines.filter(m => !m.attachedTo).length}`} rotated>
-        {opp.machines.filter(m => !m.attachedTo).map(inst => (
-          <MiniCard key={inst.uid} defId={inst.defId} instance={inst} faceUp
-            onClick={machineTargetable ? () => onMachineClick(inst.uid) : undefined}
-            targetable={machineTargetable} />
-        ))}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.oppBattle} icon="⚔️" label={`Battlefield — ${COLOR_META[opp.color].name}`} compactLabel={`⚔️ ${COLOR_META[opp.color].name}`} rotated>
-        {opp.memes.map(inst => {
-          const attacking = attackerSide === 'opp' && attackers.includes(inst.uid);
-          const blockedBy = blocks[inst.uid] ?? [];
-          const blockerSelected = !!selectedBlocker;
-          const isAttacker = attackerSide === 'opp' && attackers.includes(inst.uid);
-          const blockable = blockerSelected && isAttacker;
-          const auras = collectAurasOn(me, opp, inst.uid);
-          return (
-            <MiniCard key={inst.uid} defId={inst.defId} instance={inst} faceUp
-              pumpBonus={oppPump + auraPowerForUI(auras)}
-              onClick={(memeTargetable || blockable) ? () => onOppMemeClick(inst.uid) : undefined}
-              targetable={memeTargetable || blockable}
-              selected={attacking}
-              footer={
-                <>{attacking && '⚔️'}{blockedBy.length > 0 && ` 🛡${blockedBy.length}`}{auras.length > 0 && ` 🔮${auras.length}`}</>
-              } />
-          );
-        })}
-      </ZoneSlot>
-      {/* Large opponent life badge — corner, MTG-Arena style */}
-      <LifeBadge
-        life={opp.life} name={oppName ?? 'Opponent'} color={opp.color}
-        position="topRight" targetable={playerTargetable}
-        onClick={playerTargetable ? onOppPlayerClick : undefined}
-      />
-
-      {/* ─── ME ─── */}
-      <LifeBadge
-        life={me.life} name={myName ?? 'You'} color={me.color}
-        position="bottomLeft" targetable={playerTargetable}
-        onClick={playerTargetable ? onMyPlayerClick : undefined}
-      />
-      <ZoneSlot rect={Z.myBattle} icon="⚔️" label={`Your Battlefield — ${COLOR_META[me.color].name}`} compactLabel={`⚔️ ${COLOR_META[me.color].name}`}>
-        {me.memes.map(inst => {
-          const attacking = attackerSide === 'me' && attackers.includes(inst.uid);
-          const blockedBy = blocks[inst.uid] ?? [];
-          const auras = collectAurasOn(me, opp, inst.uid);
-          return (
-            <MiniCard key={inst.uid} defId={inst.defId} instance={inst} faceUp
-              pumpBonus={mePump + auraPowerForUI(auras)}
-              onClick={() => onMyMemeClick(inst.uid)}
-              targetable={memeTargetable}
-              selected={inst.uid === selectedBlocker || attacking}
-              footer={
-                <>{attacking && '⚔️'}{blockedBy.length > 0 && ` 🛡${blockedBy.length}`}{auras.length > 0 && ` 🔮${auras.length}`}</>
-              } />
-          );
-        })}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.myMachines} icon="⚙️" label={`Machines (${me.machines.filter(m => !m.attachedTo).length})`} compactLabel={`⚙️ ${me.machines.filter(m => !m.attachedTo).length}`}>
-        {me.machines.filter(m => !m.attachedTo).map(inst => (
-          <MiniCard key={inst.uid} defId={inst.defId} instance={inst} faceUp
-            onClick={machineTargetable ? () => onMachineClick(inst.uid) : undefined}
-            targetable={machineTargetable} />
-        ))}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.myMaindeck} icon="📜" label="Main Deck" compactLabel="📜">
-        <div style={{ color: '#888', fontSize: 10 }}>—</div>
-      </ZoneSlot>
-      <ZoneSlot rect={Z.myDeck} icon="📚" label={`Deck (${myDeckCount})`} compactLabel={`📚 ${myDeckCount}`}>
-        {myDeckCount > 0 && <MiniCard faceDown />}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.myNodes} icon="🌐" label={`Your Nodes (${me.nodes.length}) — click to tap`} compactLabel={`🌐 Nodes · ${me.nodes.length}`}>
-        {renderNodes(me.nodes, onNodeClick)}
-      </ZoneSlot>
-      <ZoneSlot rect={Z.myGrave} icon="☠️" label={`Graveyard (${me.graveyard.length})`} compactLabel={`☠️ ${me.graveyard.length}`}>
-        {me.graveyard.slice(-1).map((id, i) => <MiniCard key={i} defId={id} faceUp />)}
-      </ZoneSlot>
-      </div>
-    </div>
-  );
-}
-
-function ZoneSlot({
-  rect, label, compactLabel, icon, children, rotated, onClick, targetable,
+function PlaymatSlot({
+  top, left, width, height, label, children, onClick,
 }: {
-  rect: { left: number; top: number; w: number; h: number };
-  label: string; compactLabel?: string; icon?: string;
-  children: React.ReactNode; rotated?: boolean;
-  onClick?: () => void; targetable?: boolean;
+  top: number; left: number; width: number; height: number;
+  label?: string;
+  children?: React.ReactNode;
+  onClick?: () => void;
 }) {
   return (
     <div
@@ -1901,788 +270,920 @@ function ZoneSlot({
       title={label}
       style={{
         position: 'absolute',
-        left: `${rect.left}%`, top: `${rect.top}%`,
-        width: `${rect.w}%`, height: `${rect.h}%`,
-        border: targetable ? '2px dashed #ffeb3b' : '1px solid rgba(120,180,255,0.18)',
-        borderRadius: 8,
-        background: 'rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(1px)',
-        boxShadow: targetable
-          ? '0 0 14px rgba(255,235,59,0.45), inset 0 0 12px rgba(0,0,0,0.4)'
-          : 'inset 0 0 12px rgba(0,0,0,0.45)',
-        padding: 3,
-        overflow: 'hidden',
+        top: `${top}%`, left: `${left}%`,
+        width: `${width}%`, height: `${height}%`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: onClick ? 'pointer' : 'default',
-        transform: rotated ? 'rotate(180deg)' : undefined,
-        transition: 'box-shadow 0.2s ease, border-color 0.2s ease',
+        padding: '3%',
+        boxSizing: 'border-box',
       }}
     >
-      <div style={{
-        position: 'absolute', top: 3, left: 6, right: 6,
-        fontSize: 11, color: 'rgba(220,235,255,0.92)',
-        letterSpacing: 0.6, textShadow: '0 1px 3px #000, 0 0 4px #000',
-        pointerEvents: 'none', fontWeight: 700,
-        display: 'flex', alignItems: 'center', gap: 4,
-      }}>
-        <span>{compactLabel ?? (icon ? `${icon} ${label}` : label)}</span>
+      <div style={{ width: '100%', height: '100%' }}>
+        {children}
       </div>
-      <div style={{
-        position: 'absolute', top: 18, left: 3, right: 3, bottom: 3,
-        display: 'flex', flexWrap: 'wrap', gap: 3,
-        alignContent: 'flex-start', justifyContent: 'center', alignItems: 'center',
-        overflow: 'hidden',
-      }}>{children}</div>
     </div>
   );
 }
 
-/** Large MTG-Arena style circular life badge anchored to a playmat corner. */
-function LifeBadge({
-  life, name, color, position, onClick, targetable,
-}: {
-  life: number; name: string; color: Color;
-  position: 'topRight' | 'bottomLeft';
-  onClick?: () => void; targetable?: boolean;
+function PlaymatCard({ inst, highlight, onClick }: {
+  inst: Instance | null;
+  highlight?: 'attacker' | 'target' | 'selected' | null;
+  onClick?: () => void;
 }) {
-  const meta = COLOR_META[color];
-  const pos: React.CSSProperties = position === 'topRight'
-    ? { top: 12, right: 14 }
-    : { bottom: 12, left: 14 };
-  const glow = targetable ? '0 0 22px rgba(255,235,59,0.85), 0 0 4px rgba(255,235,59,0.9)' : `0 0 24px ${meta.hex}aa, 0 4px 18px #000c`;
-  return (
-    <div
-      onClick={onClick}
-      title={`${name} — ${life} life`}
-      style={{
-        position: 'absolute', ...pos, zIndex: 5,
-        display: 'flex', alignItems: 'center', gap: 8,
+  if (!inst) {
+    // Empty slot — fully transparent so the mat shows through.
+    return (
+      <div onClick={onClick} style={{
+        width: '100%', height: '100%',
         cursor: onClick ? 'pointer' : 'default',
-        pointerEvents: 'auto',
-        flexDirection: position === 'topRight' ? 'row-reverse' : 'row',
+      }} />
+    );
+  }
+  const isFaceDown = !inst.faceUp || inst.defId === 'hidden';
+  const def = !isFaceDown ? CARDS[inst.defId] : null;
+  const meta = def ? COLOR_META[def.color] : null;
+  const isDef = inst.position === 'def_up' || inst.position === 'def_down';
+  const ringColor =
+    highlight === 'attacker' ? '#ff5a4a' :
+    highlight === 'target'   ? '#5af0ff' :
+    highlight === 'selected' ? '#facc15' : null;
+  const card = (
+    <div onClick={onClick}
+      style={{
+        width: '100%', height: '100%',
+        background: isFaceDown ? '#0e0e22' : meta?.hex ?? '#1a1b2a',
+        color: meta?.ink ?? '#fff',
+        border: '1px solid #000', borderRadius: 6,
+        transform: isDef ? 'rotate(90deg) scale(0.82)' : 'none',
+        boxShadow: ringColor
+          ? `0 0 0 2px ${ringColor}, 0 4px 14px rgba(0,0,0,0.85)`
+          : '0 4px 14px rgba(0,0,0,0.85)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        cursor: onClick ? 'pointer' : 'default',
+        fontSize: 10,
       }}>
-      <div style={{
-        width: 78, height: 78, borderRadius: '50%',
-        background: `radial-gradient(circle at 30% 30%, ${meta.hex}, #1a1a22 75%)`,
-        border: targetable ? '3px solid #ffeb3b' : `3px solid ${meta.hex}`,
-        boxShadow: glow,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#fff', textShadow: '0 2px 8px #000',
-        fontFamily: '"Cinzel", "Times New Roman", serif',
-        fontWeight: 900, fontSize: 36, lineHeight: 1,
-        transition: 'transform 0.15s ease',
-      }}>{life}</div>
-      <div style={{
-        background: 'rgba(0,0,0,0.55)',
-        backdropFilter: 'blur(4px)',
-        padding: '4px 10px', borderRadius: 6,
-        border: `1px solid ${meta.hex}66`,
-        color: '#fff', fontSize: 12, fontWeight: 700,
-        maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        letterSpacing: 0.4,
-      }}>{name}</div>
+      {isFaceDown ? (
+        <div style={{
+          width: '100%', height: '100%',
+          background: 'radial-gradient(circle, #2a2350 0%, #0e0e22 80%)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#7a6cb0', fontSize: 18, fontWeight: 900,
+        }}>?</div>
+      ) : def ? (
+        <>
+          <div style={{
+            padding: '3px 4px', fontSize: 9, fontWeight: 800, lineHeight: 1.1,
+            background: 'rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>{def.name}</div>
+          <div style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.2)',
+          }}>
+            {def.image ? (
+              <img src={def.image} alt={def.name}
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ fontSize: 18, fontWeight: 900, color: meta?.ink }}>{meta?.glyph}</div>
+            )}
+          </div>
+          <div style={{
+            padding: '2px 4px', fontSize: 9, background: 'rgba(0,0,0,0.65)', color: '#fff',
+            textAlign: 'right',
+          }}>{statBadge(def)}</div>
+        </>
+      ) : null}
     </div>
   );
+  if (def) return <CardHover defId={inst.defId}>{card}</CardHover>;
+  return card;
 }
 
-/** Top-of-screen turn banner with chain-color glow + pulse. */
-// ─────────────────────────────────────────────────────────────────────────────
-/**
- * Mobile sticky bottom action bar. Holds the game-critical buttons + a
- * compact GasBar + the ✋ Hand toggle. Sits above the iOS safe-area inset.
- */
-function MobileActionBar({
-  gas, handCount, onOpenHand,
-  attackerCount, canAttack, onAttack,
-  canEndTurn, onEndTurn,
-  inBlockers, onConfirmBlocks,
-  targetMode, onCancelTarget,
-}: {
-  gas: Record<Color, number>;
-  handCount: number;
-  onOpenHand: () => void;
-  attackerCount: number;
-  canAttack: boolean;
-  onAttack: () => void;
-  canEndTurn: boolean;
-  onEndTurn: () => void;
-  inBlockers: boolean;
-  onConfirmBlocks: () => void;
-  targetMode: boolean;
-  onCancelTarget: () => void;
+function PileBadge({ count, label, accent = '#7aa6ff' }: {
+  count: number; label: string; accent?: string;
 }) {
   return (
     <div style={{
-      position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 90,
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      background: 'linear-gradient(180deg, rgba(10,10,20,0.85), rgba(0,0,0,0.96))',
-      borderTop: '1px solid rgba(255,215,106,0.35)',
-      boxShadow: '0 -8px 24px rgba(0,0,0,0.6)',
-      backdropFilter: 'blur(8px)',
+      width: '100%', height: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+      background: 'rgba(0,0,0,0.45)', border: `1px solid ${accent}55`, borderRadius: 6,
+      color: '#fff', fontWeight: 700, gap: 2,
+      backdropFilter: 'blur(2px)',
+    }}>
+      <div style={{ fontSize: 18, fontWeight: 900, color: accent }}>{count}</div>
+      <div style={{ fontSize: 9, color: '#ccc', letterSpacing: 1, textTransform: 'uppercase' }}>{label}</div>
+    </div>
+  );
+}
+
+function YgoPlaymat({
+  G, myId, oppId,
+  selectedUid, attackerUid,
+  onClickMonster, onClickSpellTrap,
+}: {
+  G: GState; myId: string; oppId: string;
+  selectedUid: string | null; attackerUid: string | null;
+  onClickMonster: (uid: string) => void;
+  onClickSpellTrap: (uid: string) => void;
+}) {
+  const me = G.players[myId];
+  const opp = G.players[oppId];
+
+  function highlightOf(inst: Instance | null) {
+    if (!inst) return null;
+    if (attackerUid === inst.uid) return 'attacker' as const;
+    if (selectedUid === inst.uid) return 'selected' as const;
+    return null;
+  }
+
+  // Mirror opp's zone arrays so their "left" slot (from their POV) appears on
+  // OUR right — matching the across-the-table convention shown by the mat.
+  const oppMonsters = [...opp.monsterZones].reverse();
+  const oppST       = [...opp.spellTrapZones].reverse();
+
+  const oppDeck     = (G as any).deckCounts?.[oppId]      ?? opp.mainDeck.length;
+  const oppExtra    = (G as any).extraDeckCounts?.[oppId] ?? opp.extraDeck.length;
+  const myDeck      = (G as any).deckCounts?.[myId]       ?? me.mainDeck.length;
+  const myExtra     = (G as any).extraDeckCounts?.[myId]  ?? me.extraDeck.length;
+
+  return (
+    <div style={{
+      position: 'relative',
+      width: '100%',
+      aspectRatio: `${PLAYMAT_ASPECT}`,
+      backgroundImage: `url(${PLAYMAT_BG})`,
+      backgroundSize: '100% 100%',
+      backgroundRepeat: 'no-repeat',
+      borderRadius: 10,
+      overflow: 'hidden',
+      boxShadow: '0 10px 32px rgba(0,0,0,0.7)',
+    }}>
+      {/* ── Opponent Spell/Trap row ──────────────────────────────────────── */}
+      <PlaymatSlot top={ROW.oppST} left={COL[0]} width={COL_W} height={ROW_H} label="Opponent Deck">
+        <PileBadge count={oppDeck} label="Deck" accent="#ffa066" />
+      </PlaymatSlot>
+      {oppST.map((inst, i) => (
+        <PlaymatSlot key={`opp-st-${i}`} top={ROW.oppST} left={COL[1 + i]} width={COL_W} height={ROW_H}>
+          <PlaymatCard inst={inst} highlight={highlightOf(inst)}
+            onClick={() => inst && onClickSpellTrap(inst.uid)} />
+        </PlaymatSlot>
+      ))}
+      <PlaymatSlot top={ROW.oppST} left={COL[6]} width={COL_W} height={ROW_H} label="Opponent Extra Deck">
+        <PileBadge count={oppExtra} label="Extra" accent="#c987ff" />
+      </PlaymatSlot>
+
+      {/* ── Opponent Monster row ─────────────────────────────────────────── */}
+      <PlaymatSlot top={ROW.oppMZ} left={COL[0]} width={COL_W} height={ROW_H} label="Opponent Graveyard">
+        <PileBadge count={opp.graveyard.length} label="GY" accent="#e2e2e2" />
+      </PlaymatSlot>
+      {oppMonsters.map((inst, i) => (
+        <PlaymatSlot key={`opp-mz-${i}`} top={ROW.oppMZ} left={COL[1 + i]} width={COL_W} height={ROW_H}>
+          <PlaymatCard inst={inst} highlight={highlightOf(inst)}
+            onClick={() => inst && onClickMonster(inst.uid)} />
+        </PlaymatSlot>
+      ))}
+      <PlaymatSlot top={ROW.oppMZ} left={COL[6]} width={COL_W} height={ROW_H} label="Opponent Field Spell">
+        <PlaymatCard inst={opp.fieldZone} />
+      </PlaymatSlot>
+
+      {/* ── Middle row: Banished + 2 Extra Monster Zones ─────────────────── */}
+      <PlaymatSlot top={ROW.mid + 1.5} left={0} width={BAN_W} height={ROW_H - 3} label="Opponent Banished">
+        <PileBadge count={opp.banished.length} label="Banish" accent="#e2e2e2" />
+      </PlaymatSlot>
+      <PlaymatSlot top={ROW.mid} left={EMZ_L_LEFT} width={EMZ_W} height={ROW_H} label="Extra Monster Zone (L)">
+        <PlaymatCard inst={opp.extraMonsterZone}
+          highlight={highlightOf(opp.extraMonsterZone)}
+          onClick={() => opp.extraMonsterZone && onClickMonster(opp.extraMonsterZone.uid)} />
+      </PlaymatSlot>
+      <PlaymatSlot top={ROW.mid} left={EMZ_R_LEFT} width={EMZ_W} height={ROW_H} label="Extra Monster Zone (R)">
+        <PlaymatCard inst={me.extraMonsterZone}
+          highlight={highlightOf(me.extraMonsterZone)}
+          onClick={() => me.extraMonsterZone && onClickMonster(me.extraMonsterZone.uid)} />
+      </PlaymatSlot>
+      <PlaymatSlot top={ROW.mid + 1.5} left={100 - BAN_W} width={BAN_W} height={ROW_H - 3} label="My Banished">
+        <PileBadge count={me.banished.length} label="Banish" accent="#e2e2e2" />
+      </PlaymatSlot>
+
+      {/* ── My Monster row ───────────────────────────────────────────────── */}
+      <PlaymatSlot top={ROW.myMZ} left={COL[0]} width={COL_W} height={ROW_H} label="My Field Spell">
+        <PlaymatCard inst={me.fieldZone} />
+      </PlaymatSlot>
+      {me.monsterZones.map((inst, i) => (
+        <PlaymatSlot key={`my-mz-${i}`} top={ROW.myMZ} left={COL[1 + i]} width={COL_W} height={ROW_H}>
+          <PlaymatCard inst={inst} highlight={highlightOf(inst)}
+            onClick={() => inst && onClickMonster(inst.uid)} />
+        </PlaymatSlot>
+      ))}
+      <PlaymatSlot top={ROW.myMZ} left={COL[6]} width={COL_W} height={ROW_H} label="My Graveyard">
+        <PileBadge count={me.graveyard.length} label="GY" accent="#e2e2e2" />
+      </PlaymatSlot>
+
+      {/* ── My Spell/Trap row ────────────────────────────────────────────── */}
+      <PlaymatSlot top={ROW.myST} left={COL[0]} width={COL_W} height={ROW_H} label="My Extra Deck">
+        <PileBadge count={myExtra} label="Extra" accent="#c987ff" />
+      </PlaymatSlot>
+      {me.spellTrapZones.map((inst, i) => (
+        <PlaymatSlot key={`my-st-${i}`} top={ROW.myST} left={COL[1 + i]} width={COL_W} height={ROW_H}>
+          <PlaymatCard inst={inst} highlight={highlightOf(inst)}
+            onClick={() => inst && onClickSpellTrap(inst.uid)} />
+        </PlaymatSlot>
+      ))}
+      <PlaymatSlot top={ROW.myST} left={COL[6]} width={COL_W} height={ROW_H} label="My Deck">
+        <PileBadge count={myDeck} label="Deck" accent="#ffa066" />
+      </PlaymatSlot>
+    </div>
+  );
+}
+
+function PlayerBar({ player, isCurrent, side }: {
+  player: PlayerState; isCurrent: boolean; side: 'opp' | 'me';
+}) {
+  const meta = COLOR_META[player.color];
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '6px 12px',
+      marginBottom: side === 'opp' ? 6 : 0,
+      marginTop: side === 'me' ? 6 : 0,
+      background: isCurrent ? 'rgba(255,200,80,0.10)' : 'rgba(10,10,30,0.7)',
+      border: isCurrent ? '1px solid #facc15' : '1px solid #2a2a4a',
+      borderRadius: 6,
     }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '8px 8px',
-        overflowX: 'auto', WebkitOverflowScrolling: 'touch',
-      }}>
-        {/* Compact gas pips */}
-        <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
-          {COLORS.map(c => gas[c] > 0 && <Pip key={c} c={c} n={gas[c]} />)}
+        width: 22, height: 22, borderRadius: 11,
+        background: meta.hex, color: meta.ink, fontWeight: 800,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10,
+      }}>{meta.glyph}</div>
+      <div style={{ fontWeight: 700, fontSize: 13 }}>{player.profileName}</div>
+      <div style={{ marginLeft: 'auto', fontWeight: 800, fontSize: 20,
+        color: player.lp <= 2000 ? '#ff7070' : '#4ade80' }}>
+        LP {player.lp}
+      </div>
+    </div>
+  );
+}
+
+// ── Player side ────────────────────────────────────────────────────────────
+
+function PlayerSide({
+  G, pid, isMe, isCurrent, onClickMonster, onClickSpellTrap, onClickField, selectedUid,
+  attackerUid, attackTargetUid,
+}: {
+  G: GState; pid: string; isMe: boolean; isCurrent: boolean;
+  onClickMonster?: (uid: string) => void;
+  onClickSpellTrap?: (uid: string, index: number) => void;
+  onClickField?: () => void;
+  selectedUid?: string | null;
+  attackerUid?: string | null;
+  attackTargetUid?: string | null;
+}) {
+  const p = G.players[pid];
+  const meta = COLOR_META[p.color];
+  return (
+    <div style={{
+      padding: 8, borderRadius: 8,
+      background: isCurrent ? 'rgba(255,200,80,0.06)' : 'rgba(255,255,255,0.02)',
+      border: isCurrent ? '1px solid #facc15' : '1px solid #333',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+        <div style={{
+          width: 22, height: 22, borderRadius: 11,
+          background: meta.hex, color: meta.ink, fontWeight: 800,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11,
+        }}>{meta.glyph}</div>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>{p.profileName}</div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ fontWeight: 800, fontSize: 18, color: p.lp <= 2000 ? '#ff7070' : '#4ade80' }}>
+            LP {p.lp}
+          </div>
+          <div style={{ fontSize: 10, color: '#888' }}>
+            Hand {p.hand.length} · Deck {p.mainDeck.length || (G as any).deckCounts?.[pid] || 0}
+            {' · '}Extra {(G as any).extraDeckCounts?.[pid] ?? p.extraDeck.length}
+          </div>
         </div>
-        <div style={{ flex: 1 }} />
-        {targetMode && (
-          <button onClick={onCancelTarget} style={mobBtn('#888')}>✕ CANCEL</button>
+      </div>
+
+      {/* Top row: Field zone, Spell/Trap zones, Extra Monster Zone, GY */}
+      <div style={{ display: 'flex', gap: ZONE_GAP, alignItems: 'flex-end' }}>
+        <div onClick={onClickField} style={{ cursor: onClickField ? 'pointer' : 'default' }}>
+          <div style={{ fontSize: 9, color: '#aaa' }}>FIELD</div>
+          <MiniCard inst={p.fieldZone} />
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: '#aaa' }}>SPELL / TRAP</div>
+          <div style={{ display: 'flex', gap: ZONE_GAP }}>
+            {p.spellTrapZones.map((inst, i) => (
+              <div key={i} onClick={() => inst && onClickSpellTrap?.(inst.uid, i)}>
+                <MiniCard inst={inst} highlight={inst && selectedUid === inst.uid ? 'selected' : null} />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: '#aaa' }}>EXTRA MZ</div>
+          <div onClick={() => p.extraMonsterZone && onClickMonster?.(p.extraMonsterZone.uid)}>
+            <MiniCard inst={p.extraMonsterZone}
+              highlight={
+                p.extraMonsterZone && attackerUid === p.extraMonsterZone.uid ? 'attacker' :
+                p.extraMonsterZone && attackTargetUid === p.extraMonsterZone.uid ? 'target' :
+                p.extraMonsterZone && selectedUid === p.extraMonsterZone.uid ? 'selected' : null
+              } />
+          </div>
+        </div>
+        <GraveyardSlot pile={p.graveyard} label="GY" />
+        <GraveyardSlot pile={p.banished} label="Banished" />
+      </div>
+
+      {/* Bottom row: 5 Main Monster zones */}
+      <div style={{ marginTop: 8 }}>
+        <div style={{ fontSize: 9, color: '#aaa' }}>MONSTER ZONES</div>
+        <div style={{ display: 'flex', gap: ZONE_GAP }}>
+          {p.monsterZones.map((inst, i) => (
+            <div key={i} onClick={() => inst && onClickMonster?.(inst.uid)}>
+              <MiniCard inst={inst}
+                highlight={
+                  inst && attackerUid === inst.uid ? 'attacker' :
+                  inst && attackTargetUid === inst.uid ? 'target' :
+                  inst && selectedUid === inst.uid ? 'selected' : null
+                } />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Hand */}
+      <div style={{ marginTop: 8 }}>
+        <div style={{ fontSize: 9, color: '#aaa' }}>HAND</div>
+        {isMe ? <span /* placeholder; rendered below by parent for click handling */ /> : (
+          <HandBar hand={p.hand} opponent />
         )}
-        {canAttack && (
-          <button onClick={onAttack} style={mobBtn('#ff5d33')}>⚔ ATTACK ({attackerCount})</button>
-        )}
-        {inBlockers && (
-          <button onClick={onConfirmBlocks} style={mobBtn('#5fcfff')}>🛡 BLOCKS</button>
-        )}
-        {canEndTurn && (
-          <button onClick={onEndTurn} style={mobBtn('#f0d27a', '#1a1408')}>END TURN</button>
-        )}
-        <button onClick={onOpenHand} style={{ ...mobBtn('#9b6cff'), position: 'relative' }}>
-          ✋ HAND
-          <span style={{
-            marginLeft: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-            background: '#fff', color: '#1a1408', fontWeight: 900, fontSize: 11,
-          }}>{handCount}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Chain stack panel ──────────────────────────────────────────────────────
+
+function ChainStackPanel({ chain }: { chain: ChainLink[] }) {
+  if (chain.length === 0) return null;
+  return (
+    <div style={{
+      position: 'fixed', right: 12, top: 80, width: 240,
+      background: '#0c0c1e', border: '1px solid #6c4bd8', borderRadius: 8,
+      padding: 10, zIndex: 50,
+    }}>
+      <div style={{ fontWeight: 800, color: '#facc15', fontSize: 12, marginBottom: 6 }}>
+        Chain ({chain.length})
+      </div>
+      {chain.slice().reverse().map((link, i) => (
+        <div key={i} style={{
+          padding: 6, marginBottom: 4, borderRadius: 4,
+          background: link.negated ? 'rgba(255,0,0,0.15)' : 'rgba(108,75,216,0.15)',
+          border: '1px solid #6c4bd8', fontSize: 11,
+        }}>
+          <div style={{ fontWeight: 700 }}>
+            #{chain.length - i} · SS{link.spellSpeed} · P{link.controller}
+          </div>
+          <div>{CARDS[link.defId]?.name ?? link.defId}</div>
+          {link.negated && <div style={{ color: '#ff7070', fontSize: 10 }}>NEGATED</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Mulligan dialog ────────────────────────────────────────────────────────
+
+function MulliganModal({ G, myId, moves }: { G: GState; myId: string; moves: any }) {
+  const me = G.players[myId];
+  if (G.mulligan.done[myId]) return null;
+  const nextHandSize = mulliganDrawCount((G.mulligan.counts[myId] ?? 0) + 1);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 200,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }}>
+      <div style={{
+        background: '#0a0a1e', border: '1px solid #6c4bd8', borderRadius: 12,
+        padding: 24, maxWidth: 720,
+      }}>
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Opening Hand</div>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Starting hand size is {MULLIGAN_INITIAL_HAND}. Next mulligan would draw {nextHandSize}
+          (minimum {MULLIGAN_FLOOR}).
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+          {me.hand.map((id, i) => {
+            const def = CARDS[id];
+            const meta = def ? COLOR_META[def.color] : null;
+            return (
+              <CardHover key={i} defId={id}>
+                <div style={{
+                  width: CARD_W, height: CARD_H, background: meta?.hex ?? '#222',
+                  border: '1px solid #000', borderRadius: 6, padding: 4, fontSize: 10,
+                  color: meta?.ink ?? '#fff', overflow: 'hidden',
+                }}>
+                  <div style={{ fontWeight: 800 }}>{def?.name ?? '?'}</div>
+                  <div style={{ fontSize: 9 }}>{def ? statBadge(def) : ''}</div>
+                </div>
+              </CardHover>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => moves.keepHand()}
+            style={{ background: '#4ade80', color: '#000', border: 'none', padding: '10px 18px', fontWeight: 700, borderRadius: 6, cursor: 'pointer' }}>
+            Keep
+          </button>
+          <button onClick={() => moves.mulligan()}
+            disabled={(G.mulligan.counts[myId] ?? 0) >= MULLIGAN_INITIAL_HAND - MULLIGAN_FLOOR + 1}
+            style={{ background: '#facc15', color: '#000', border: 'none', padding: '10px 18px', fontWeight: 700, borderRadius: 6, cursor: 'pointer' }}>
+            Mulligan
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Phase advance bar ──────────────────────────────────────────────────────
+
+function PhaseBar({ ctx, myId, moves, G }: { ctx: any; myId: string; moves: any; G: GState }) {
+  const myTurn = ctx.currentPlayer === myId;
+  const phases: Array<{ id: string; label: string }> = [
+    { id: 'draw',    label: 'Draw' },
+    { id: 'standby', label: 'Standby' },
+    { id: 'main1',   label: 'Main 1' },
+    { id: 'battle',  label: 'Battle' },
+    { id: 'main2',   label: 'Main 2' },
+    { id: 'end',     label: 'End' },
+  ];
+  return (
+    <div style={{
+      display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center',
+      padding: '8px 12px', background: '#0c0c1e', borderRadius: 8, margin: '8px 0',
+      flexWrap: 'wrap',
+    }}>
+      {phases.map(p => (
+        <div key={p.id} style={{
+          padding: '4px 10px', borderRadius: 4,
+          background: ctx.phase === p.id ? '#6c4bd8' : '#1a1a2e',
+          color: '#fff', fontSize: 11, fontWeight: 700,
+          opacity: ctx.phase === p.id ? 1 : 0.5,
+        }}>{p.label}</div>
+      ))}
+      {myTurn && G.chain.length === 0 && !G.priorityResponse && (
+        <>
+          <button onClick={() => moves.advancePhase()}
+            style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 14px', fontWeight: 700, borderRadius: 6, cursor: 'pointer' }}>
+            Next Phase ▶
+          </button>
+          <button onClick={() => moves.endTurnMove()}
+            style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 14px', fontWeight: 700, borderRadius: 6, cursor: 'pointer' }}>
+            End Turn
+          </button>
+        </>
+      )}
+      {G.priorityResponse?.playerID === myId && (
+        <button onClick={() => moves.passChain()}
+          style={{ background: '#facc15', color: '#000', border: 'none', padding: '6px 14px', fontWeight: 700, borderRadius: 6, cursor: 'pointer' }}>
+          Pass · Resolve Chain
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Hand action panel: shows actions for the selected hand card ────────────
+
+function HandActionPanel({
+  G, myId, ctx, moves, selectedHandIdx, onClose,
+}: {
+  G: GState; myId: string; ctx: any; moves: any; selectedHandIdx: number | null;
+  onClose: () => void;
+}) {
+  if (selectedHandIdx == null) return null;
+  const me = G.players[myId];
+  const def = CARDS[me.hand[selectedHandIdx]];
+  if (!def) return null;
+  const isMyTurn = ctx.currentPlayer === myId;
+  const isMainPhase = ctx.phase === 'main1' || ctx.phase === 'main2';
+
+  // Action buttons depend on card type.
+  const actions: Array<{ label: string; fn: () => void; disabled?: boolean; danger?: boolean }> = [];
+
+  if (isMonster(def) && !isExtraDeckMonster(def) && def.subtype !== 'ritual' && isMyTurn && isMainPhase) {
+    const lvl = def.level ?? 0;
+    const need = tributesRequired(lvl);
+    const canNormal = need === 0 && !me.hasNormalSummoned && me.monsterZones.some(z => z === null);
+    actions.push({
+      label: `Normal Summon (ATK)`, fn: () => { moves.normalSummon(selectedHandIdx, false, false); onClose(); },
+      disabled: !canNormal,
+    });
+    actions.push({
+      label: `Set (face-down DEF)`, fn: () => { moves.normalSummon(selectedHandIdx, true, true); onClose(); },
+      disabled: !canNormal,
+    });
+    if (need > 0) {
+      const available = me.monsterZones.filter(z => z) as Instance[];
+      actions.push({
+        label: `Tribute Summon (need ${need})`,
+        fn: () => {
+          const picks = available.slice(0, need).map(z => z.uid);
+          moves.tributeSummon(selectedHandIdx, picks, false, false);
+          onClose();
+        },
+        disabled: me.hasNormalSummoned || available.length < need || !me.monsterZones.some(z => z === null),
+      });
+    }
+  }
+
+  if ((isSpell(def) || isTrap(def)) && isMyTurn && isMainPhase) {
+    if (isSpell(def) && def.subtype !== 'ritual') {
+      const canActivate = me.spellTrapZones.some(z => z === null) || def.subtype === 'normal' || def.subtype === 'field';
+      actions.push({
+        label: `Activate ${def.subtype === 'normal' ? 'Spell' : `Spell (${def.subtype})`}`,
+        fn: () => { moves.activateCard({ handIndex: selectedHandIdx }); onClose(); },
+        disabled: !canActivate,
+      });
+    }
+    actions.push({
+      label: `Set (face-down)`,
+      fn: () => { moves.setSpellTrap(selectedHandIdx); onClose(); },
+      disabled: !me.spellTrapZones.some(z => z === null),
+    });
+  }
+
+  if (isSpell(def) && def.subtype === 'quickplay' && !isMyTurn) {
+    // Note: real YGO requires the card to be Set first to activate on opp's turn.
+    // We surface a hint here.
+    actions.push({
+      label: `(Set this on your turn to use on opponent's turn)`,
+      fn: () => {}, disabled: true,
+    });
+  }
+
+  if (actions.length === 0) {
+    return (
+      <div style={{
+        position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)',
+        background: '#0a0a1e', border: '1px solid #6c4bd8', borderRadius: 8, padding: 14,
+        zIndex: 100, maxWidth: 360,
+      }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>{def.name}</div>
+        <div style={{ fontSize: 12, color: '#aaa' }}>No legal action available right now.</div>
+        <button onClick={onClose} style={{ marginTop: 8, background: '#333', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer' }}>Close</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)',
+      background: '#0a0a1e', border: '1px solid #6c4bd8', borderRadius: 8, padding: 14,
+      zIndex: 100, maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      <div style={{ fontWeight: 800 }}>{def.name}</div>
+      <div style={{ fontSize: 11, color: '#aaa' }}>{def.text || statBadge(def)}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {actions.map((a, i) => (
+          <button key={i} onClick={a.fn} disabled={a.disabled}
+            style={{
+              background: a.disabled ? '#1a1a2e' : (a.danger ? '#dc2626' : '#6c4bd8'),
+              color: a.disabled ? '#666' : '#fff',
+              border: 'none', padding: '6px 12px', borderRadius: 4,
+              fontSize: 11, fontWeight: 700, cursor: a.disabled ? 'not-allowed' : 'pointer',
+            }}>{a.label}</button>
+        ))}
+        <button onClick={onClose}
+          style={{ background: '#333', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>
+          Cancel
         </button>
       </div>
     </div>
   );
 }
-function mobBtn(color: string, ink: string = '#fff'): React.CSSProperties {
-  return {
-    background: color, color: ink, border: `1px solid ${color}`,
-    borderRadius: 8, padding: '10px 12px', cursor: 'pointer',
-    fontWeight: 800, fontSize: 13, letterSpacing: 1,
-    minHeight: 44, flexShrink: 0,
-    boxShadow: `0 0 10px ${color}66`,
-  };
-}
 
-/**
- * Full-screen bottom sheet listing the player's hand on mobile.
- * Tapping a card plays it (closing the sheet).
- */
-function MobileHandSheet({
-  hand, selectedIdx, canPlay, onClose, onPlay,
+// ── Monster action panel ───────────────────────────────────────────────────
+
+function MonsterActionPanel({
+  G, myId, ctx, moves, selectedUid, attackerUid, onClose, onPickAttacker, onPickTarget,
 }: {
-  hand: string[];
-  selectedIdx: number | null;
-  canPlay: boolean;
+  G: GState; myId: string; ctx: any; moves: any;
+  selectedUid: string | null; attackerUid: string | null;
   onClose: () => void;
-  onPlay: (i: number) => void;
+  onPickAttacker: (uid: string) => void;
+  onPickTarget: (uid: string | null) => void;
 }) {
-  const [dragging, setDragging] = useState(false);
-  return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 140,
-      background: dragging ? 'rgba(4,6,12,0.10)' : 'rgba(4,6,12,0.78)',
-      backdropFilter: dragging ? 'none' : 'blur(6px)',
-      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      transition: 'background 0.15s ease',
-      pointerEvents: dragging ? 'none' : 'auto',
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: '100%', maxHeight: '85dvh', overflowY: 'auto',
-        background: 'linear-gradient(180deg, rgba(28,18,52,0.98), rgba(10,8,22,0.99))',
-        borderTop: '1px solid rgba(143,92,255,0.55)',
-        boxShadow: '0 -8px 32px rgba(0,0,0,0.7)',
-        borderTopLeftRadius: 14, borderTopRightRadius: 14,
-        padding: 14, paddingBottom: 'calc(14px + env(safe-area-inset-bottom))',
-        display: 'flex', flexDirection: 'column', gap: 12,
-        opacity: dragging ? 0 : 1,
-        transition: 'opacity 0.15s ease',
-        pointerEvents: dragging ? 'none' : 'auto',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 1.5, color: '#ffd76a' }}>
-            ✋ YOUR HAND ({hand.length})
-          </div>
-          <button onClick={onClose} style={{
-            background: 'transparent', color: '#fff',
-            border: '1px solid #555', borderRadius: 6,
-            padding: '8px 14px', cursor: 'pointer', fontWeight: 700,
-            minHeight: 44, minWidth: 44,
-          }}>✕</button>
-        </div>
-        {hand.length === 0 ? (
-          <div style={{ padding: 20, color: '#aab', textAlign: 'center' }}>
-            No cards in hand.
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-            gap: 10,
-          }}>
-            {hand.map((id, i) => (
-              <div key={i} style={{
-                display: 'flex', justifyContent: 'center',
-                opacity: canPlay ? 1 : 0.7,
-                outline: selectedIdx === i ? '2px solid #ffd76a' : 'none',
-                borderRadius: 8,
-              }}>
-                <DraggableCard
-                  defId={id}
-                  onDrop={() => { if (canPlay) { onPlay(i); } }}
-                  onDragStateChange={setDragging}
-                >
-                  <CardFace
-                    defId={id}
-                    selected={selectedIdx === i}
-                    pinOnTap
-                    onClick={() => canPlay && onPlay(i)}
-                  />
-                </DraggableCard>
-              </div>
-            ))}
-          </div>
-        )}
-        {!canPlay && (
-          <div style={{ textAlign: 'center', fontSize: 12, color: '#aab' }}>
-            Wait for your turn to play a card.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-function MulliganModal({
-  hand, mulliganCount, done, oppDone, deadline, onKeep, onMulligan, onForceEnd,
-}: {
-  hand: string[];
-  mulliganCount: number;
-  done: boolean;
-  oppDone: boolean;
-  deadline: number;
-  onKeep: () => void;
-  onMulligan: () => void;
-  onForceEnd: () => void;
-}) {
-  const nextSize = mulliganDrawCount(mulliganCount + 1);
-  const atFloor = hand.length <= MULLIGAN_FLOOR;
-  // Live countdown tick.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(id);
-  }, []);
-  const remainingMs = deadline > 0 ? Math.max(0, deadline - now) : 0;
-  const remainingS  = Math.ceil(remainingMs / 1000);
-  const waitingOnOpp = done && !oppDone;
-  const expired = deadline > 0 && now >= deadline;
-  // Auto-fire the escape hatch once the deadline lapses while we're waiting
-  // on the opponent. Only fires once thanks to the guard.
-  const firedRef = useRef(false);
-  useEffect(() => {
-    if (waitingOnOpp && expired && !firedRef.current) {
-      firedRef.current = true;
-      try { onForceEnd(); } catch { /* INVALID_MOVE is fine */ }
+  if (!selectedUid) return null;
+  const isMyTurn = ctx.currentPlayer === myId;
+  // Find the instance.
+  let found: { ownerId: string; inst: Instance } | null = null;
+  for (const pid of Object.keys(G.players)) {
+    const p = G.players[pid];
+    for (const z of [...p.monsterZones, p.extraMonsterZone]) {
+      if (z?.uid === selectedUid) found = { ownerId: pid, inst: z };
     }
-  }, [waitingOnOpp, expired, onForceEnd]);
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 150,
-      background: 'rgba(4,6,12,0.86)', backdropFilter: 'blur(8px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 20,
-    }}>
-      <div style={{
-        width: 'min(960px, 100%)', maxHeight: '92dvh', overflow: 'auto',
-        background: 'linear-gradient(180deg, rgba(28,18,52,0.96), rgba(10,8,22,0.96))',
-        border: '1px solid rgba(143,92,255,0.55)',
-        boxShadow: '0 0 32px rgba(143,92,255,0.35)',
-        borderRadius: 12, padding: 24,
-        display: 'flex', flexDirection: 'column', gap: 16,
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: '"Cinzel", serif', fontSize: 22, fontWeight: 800, letterSpacing: 2, color: '#fff' }}>
-            ⏳ MULLIGAN
-          </div>
-          <div style={{ fontSize: 12, color: '#aab', marginTop: 4 }}>
-            {done
-              ? oppDone
-                ? 'Both players ready — starting…'
-                : 'Waiting for opponent to keep or mulligan…'
-              : `Your opening hand (${hand.length} cards). Keep it, or mulligan to redraw ${nextSize} card${nextSize === 1 ? '' : 's'}.`}
-          </div>
-          <div style={{ fontSize: 11, color: '#7a8', marginTop: 6, fontStyle: 'italic' }}>
-            London mulligan · 1st free · −1 each redraw · floor {MULLIGAN_FLOOR}
-            {mulliganCount > 0 && ` · mull #${mulliganCount}`}
-          </div>
-        </div>
+  }
+  if (!found) return null;
+  const inst = found.inst;
+  const isMine = found.ownerId === myId;
+  const def = inst.faceUp && inst.defId !== 'hidden' ? CARDS[inst.defId] : null;
 
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 8,
-          justifyContent: 'center', padding: 12,
-          background: 'rgba(0,0,0,0.35)', borderRadius: 8,
-        }}>
-          {hand.map((defId, i) => (
-            <CardFace key={i} defId={defId} />
-          ))}
-        </div>
+  const actions: Array<{ label: string; fn: () => void; disabled?: boolean }> = [];
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button
-            onClick={onKeep}
-            disabled={done}
-            style={{
-              background: done ? 'rgba(255,255,255,0.08)' : 'linear-gradient(180deg, #56d97a, #1e7a3a)',
-              color: '#fff', border: '1px solid #1e7a3a',
-              padding: '10px 24px', borderRadius: 8,
-              cursor: done ? 'default' : 'pointer',
-              fontWeight: 800, fontSize: 14, letterSpacing: 1,
-              opacity: done ? 0.5 : 1,
-              boxShadow: done ? 'none' : '0 0 12px rgba(86,217,122,0.4)',
-            }}>✓ KEEP HAND</button>
-          <button
-            onClick={onMulligan}
-            disabled={done || atFloor}
-            title={atFloor ? `Already at floor (${MULLIGAN_FLOOR} cards).` : `Redraw to ${nextSize} cards.`}
-            style={{
-              background: (done || atFloor) ? 'rgba(255,255,255,0.08)' : 'linear-gradient(180deg, #f0b32a, #c46a1c)',
-              color: '#fff', border: '1px solid #7a4010',
-              padding: '10px 24px', borderRadius: 8,
-              cursor: (done || atFloor) ? 'default' : 'pointer',
-              fontWeight: 800, fontSize: 14, letterSpacing: 1,
-              opacity: (done || atFloor) ? 0.5 : 1,
-              boxShadow: (done || atFloor) ? 'none' : '0 0 12px rgba(240,179,42,0.4)',
-            }}>🔄 MULLIGAN ({nextSize})</button>
-          {waitingOnOpp && expired && (
-            <button
-              onClick={onForceEnd}
-              title="Opponent ran out of time — start the match anyway."
-              style={{
-                background: 'linear-gradient(180deg, #ef4444, #7a1d1d)',
-                color: '#fff', border: '1px solid #7a1d1d',
-                padding: '10px 24px', borderRadius: 8,
-                cursor: 'pointer',
-                fontWeight: 800, fontSize: 14, letterSpacing: 1,
-                boxShadow: '0 0 12px rgba(239,68,68,0.5)',
-              }}>⚡ START MATCH</button>
-          )}
-        </div>
+  if (isMine && isMyTurn) {
+    if ((ctx.phase === 'main1' || ctx.phase === 'main2')) {
+      if (!inst.faceUp && !inst.setThisTurn) {
+        actions.push({ label: 'Flip Summon', fn: () => { moves.flipSummon(selectedUid); onClose(); } });
+      }
+      if (inst.faceUp && !inst.setThisTurn && !inst.positionChangedThisTurn && !inst.attackedThisTurn) {
+        actions.push({ label: 'Change Position', fn: () => { moves.changePosition(selectedUid); onClose(); } });
+      }
+    }
+    if (ctx.phase === 'battle' && inst.faceUp && inst.position === 'atk' && !inst.attackedThisTurn) {
+      if (attackerUid === selectedUid) {
+        // Already chosen as attacker; pick a target.
+      } else {
+        actions.push({ label: 'Attack with this', fn: () => { onPickAttacker(selectedUid); } });
+      }
+    }
+  }
 
-        {waitingOnOpp && deadline > 0 && (
-          <div style={{
-            textAlign: 'center', fontSize: 11, color: expired ? '#ef4444' : '#aab', letterSpacing: 1,
-          }}>
-            {expired
-              ? '⏰ Opponent timed out — click Start Match to begin.'
-              : `Auto-starting in ${remainingS}s if opponent doesn't respond…`}
-          </div>
-        )}
+  if (!isMine && attackerUid && ctx.phase === 'battle') {
+    actions.push({ label: 'Attack this target', fn: () => { onPickTarget(selectedUid); } });
+  }
 
-        <div style={{
-          display: 'flex', justifyContent: 'center', gap: 18,
-          fontSize: 11, color: '#9aa', letterSpacing: 1,
-        }}>
-          <span style={{ color: done ? '#56d97a' : '#aab' }}>● You {done ? 'ready' : 'choosing…'}</span>
-          <span style={{ color: oppDone ? '#56d97a' : '#aab' }}>● Opponent {oppDone ? 'ready' : 'choosing…'}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Suppress unused-warning for the constant on initial scaffolding.
-void MULLIGAN_INITIAL_HAND;
-
-// ─────────────────────────────────────────────────────────────────────────────
-function TurnBanner({
-  myTurn, turn, phase, myName, oppName, myProfile, oppProfile, onOpenRules,
-  onEndTurn, canEndTurn,
-  attackerCount, onConfirmAttackers, canAttack,
-  inBlockers, onConfirmBlocks,
-  turnDeadline, canForceEnd, onForceEnd,
-}: {
-  myTurn: boolean; turn: number; phase: string;
-  myName: string; oppName: string;
-  myProfile?: any; oppProfile?: any;
-  onOpenRules: () => void;
-  onEndTurn: () => void;
-  canEndTurn: boolean;
-  attackerCount: number;
-  onConfirmAttackers: () => void;
-  canAttack: boolean;
-  inBlockers: boolean;
-  onConfirmBlocks: () => void;
-  turnDeadline: number;
-  canForceEnd: boolean;
-  onForceEnd: () => void;
-}) {
-  const dotColor = myTurn ? '#48d97a' : '#e85c5c';
-  const headline = myTurn ? 'YOUR TURN' : "OPPONENT'S TURN";
-
-  // 60-second auto-end-turn timer. Resets whenever turn/phase ownership changes.
-  const TURN_LIMIT = 60;
-  const [secondsLeft, setSecondsLeft] = useState(TURN_LIMIT);
-  const firedRef = useRef(false);
-  useEffect(() => {
-    setSecondsLeft(TURN_LIMIT);
-    firedRef.current = false;
-  }, [turn, myTurn, canEndTurn]);
-  useEffect(() => {
-    if (!canEndTurn) return;
-    const id = setInterval(() => {
-      setSecondsLeft(s => {
-        if (s <= 1) {
-          if (!firedRef.current) { firedRef.current = true; onEndTurn(); }
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [canEndTurn, onEndTurn]);
-
-  const lowTime = canEndTurn && secondsLeft <= 10;
-  const timerColor = lowTime ? '#ff5d73' : '#ffd76a';
-
-  // AFK escape hatch — if it's the opponent's turn and the server deadline has
-  // passed (plus a small grace window), any client may force-end their turn.
-  // This prevents the game from soft-locking when the opponent disconnects.
-  const [nowMs, setNowMs] = useState(Date.now());
-  useEffect(() => {
-    if (!canForceEnd || !turnDeadline) return;
-    const id = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [canForceEnd, turnDeadline]);
-  const forceGraceMs = 5000;
-  const oppMsLeft = canForceEnd && turnDeadline ? (turnDeadline + forceGraceMs) - nowMs : Infinity;
-  const showForceBtn = canForceEnd && turnDeadline > 0 && oppMsLeft <= 0;
-  const showForceCountdown = canForceEnd && turnDeadline > 0 && oppMsLeft > 0 && oppMsLeft <= 30_000;
-
-  return (
-    <div style={{
-      position: 'relative',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      gap: 12, padding: '6px 14px', borderRadius: 10,
-      background: 'linear-gradient(180deg, rgba(20,20,30,0.95), rgba(10,10,14,0.95))',
-      border: `1px solid ${dotColor}55`,
-      boxShadow: `0 0 18px ${dotColor}33`,
-    }}>
-      <div style={{ fontSize: 11, color: '#9aa', fontWeight: 600, minWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        VS <b style={{ color: '#fff' }}>{oppName}</b> <span style={{ opacity: 0.6 }}>({formatRecord(oppProfile)})</span>
-      </div>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        fontFamily: '"Cinzel", "Times New Roman", serif',
-        fontWeight: 800, fontSize: 18, letterSpacing: 2,
-        color: '#fff', textShadow: `0 0 12px ${dotColor}aa`,
-      }}>
-        <span style={{
-          display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
-          background: dotColor, boxShadow: `0 0 12px ${dotColor}`,
-          animation: 'pulse-dot 1.6s ease-in-out infinite',
-        }} />
-        {headline}
-        <span style={{ fontFamily: 'system-ui', fontWeight: 600, fontSize: 11, color: '#aab', letterSpacing: 1 }}>
-          · TURN {turn} · {phase.toUpperCase()}
-        </span>
-        {canEndTurn && (
-          <span style={{
-            fontFamily: 'system-ui', fontWeight: 800, fontSize: 13, letterSpacing: 1,
-            color: timerColor, padding: '2px 8px', borderRadius: 6,
-            background: `${timerColor}22`, border: `1px solid ${timerColor}66`,
-            animation: lowTime ? 'pulse-dot 0.8s ease-in-out infinite' : 'none',
-          }} title="Auto-end-turn in">⏱ {secondsLeft}s</span>
-        )}
-        {showForceCountdown && (
-          <span style={{
-            fontFamily: 'system-ui', fontWeight: 700, fontSize: 11, letterSpacing: 1,
-            color: '#ffb84a', padding: '2px 8px', borderRadius: 6,
-            background: '#ffb84a22', border: '1px solid #ffb84a55',
-          }} title="Opponent has been thinking a long time — you'll be able to force-end their turn soon.">
-            ⏳ {Math.ceil(oppMsLeft / 1000)}s
-          </span>
-        )}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 160, justifyContent: 'flex-end' }}>
-        <span style={{ fontSize: 11, color: '#9aa', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          <b style={{ color: '#fff' }}>{myName}</b> <span style={{ opacity: 0.6 }}>({formatRecord(myProfile)})</span>
-        </span>
-        {canAttack && attackerCount > 0 && (
-          <button onClick={onConfirmAttackers} title="Swing with selected attackers"
-            style={{
-              background: 'linear-gradient(180deg, #ff7e5f, #c43e1c)',
-              color: '#fff', border: '1px solid #7a2510',
-              borderRadius: 6, padding: '5px 12px', cursor: 'pointer',
-              fontWeight: 800, fontSize: 12, letterSpacing: 1,
-              boxShadow: '0 0 10px #ff5d3388',
-              animation: 'pulse-dot 1.6s ease-in-out infinite',
-            }}>⚔ ATTACK ({attackerCount})</button>
-        )}
-        {inBlockers && (
-          <button onClick={onConfirmBlocks} title="Lock in blockers and resolve combat"
-            style={{
-              background: 'linear-gradient(180deg, #5fcfff, #1c75c4)',
-              color: '#fff', border: '1px solid #103a6a',
-              borderRadius: 6, padding: '5px 12px', cursor: 'pointer',
-              fontWeight: 800, fontSize: 12, letterSpacing: 1,
-              boxShadow: '0 0 10px #5fcfff88',
-            }}>🛡 CONFIRM BLOCKS</button>
-        )}
-        {canEndTurn && (
-          <button onClick={onEndTurn} title="End your turn (auto-ends at 0s)"
-            style={{
-              background: 'linear-gradient(180deg, #f0d27a, #c69533)',
-              color: '#1a1408', border: '1px solid #8a6d24',
-              borderRadius: 6, padding: '5px 12px', cursor: 'pointer',
-              fontWeight: 800, fontSize: 12, letterSpacing: 1,
-              boxShadow: '0 0 8px #d9b85f55',
-            }}>END TURN</button>
-        )}
-        {showForceBtn && (
-          <button onClick={onForceEnd} title="Opponent appears stuck or disconnected — force-end their turn."
-            style={{
-              background: 'linear-gradient(180deg, #ff5d73, #b1273f)',
-              color: '#fff', border: '1px solid #6e1224',
-              borderRadius: 6, padding: '5px 12px', cursor: 'pointer',
-              fontWeight: 800, fontSize: 12, letterSpacing: 1,
-              boxShadow: '0 0 10px #ff5d7388',
-              animation: 'pulse-dot 1.6s ease-in-out infinite',
-            }}>⚡ FORCE END</button>
-        )}
-        <button onClick={onOpenRules} title="How to play"
-          style={{
-            background: 'linear-gradient(180deg,#3a2a55,#22163a)',
-            color: '#ffd76a', border: '1px solid #ffd76a55',
-            borderRadius: '50%', width: 28, height: 28, cursor: 'pointer',
-            fontWeight: 800, fontSize: 14, lineHeight: 1,
-            boxShadow: '0 0 8px #ffd76a44',
-          }}>?</button>
-      </div>
-      <style>{`@keyframes pulse-dot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.85); } }`}</style>
-    </div>
-  );
-}
-
-/** Slide-in rules drawer launched by the floating ? button. */
-function RulesDrawer({ onClose }: { onClose: () => void }) {
-  return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 100,
-      background: 'rgba(0,0,0,0.7)',
-      display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end',
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: 'min(720px, 100%)', height: '100%',
-        background: 'linear-gradient(180deg, #15101e, #0a0710)',
-        borderLeft: '1px solid #ffd76a55',
-        boxShadow: '-12px 0 32px #000c',
-        overflowY: 'auto',
-        padding: 20,
-        display: 'flex', flexDirection: 'column', gap: 16,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-            fontSize: 22, fontWeight: 800, color: '#ffd76a', letterSpacing: 2,
-          }}>HOW TO PLAY</div>
-          <button onClick={onClose} style={{
-            background: 'transparent', color: '#fff',
-            border: '1px solid #555', borderRadius: 6,
-            padding: '4px 12px', cursor: 'pointer', fontWeight: 700,
-          }}>✕</button>
-        </div>
-        <div style={{
-          borderRadius: 10, overflow: 'hidden',
-          border: '1px solid #ffd76a55',
-          boxShadow: '0 0 24px rgba(212,175,55,0.18)',
-          background: '#000',
-        }}>
-          <video
-            src="/rules-intro.mp4"
-            controls
-            playsInline
-            preload="metadata"
-            style={{ display: 'block', width: '100%', height: 'auto' }}
-          />
-        </div>
-        <RulesPanel side="left" />
-        <RulesPanel side="right" />
-      </div>
-    </div>
-  );
-}
-
-function MiniCard({
-  defId, instance, faceUp, faceDown, onClick, selected, targetable, footer, pumpBonus,
-}: {
-  defId?: string; instance?: Instance;
-  faceUp?: boolean; faceDown?: boolean;
-  onClick?: () => void; selected?: boolean; targetable?: boolean;
-  footer?: React.ReactNode;
-  pumpBonus?: number;
-}) {
-  if (faceDown || !defId) {
+  if (actions.length === 0) {
     return (
       <div style={{
-        width: 48, height: 68, borderRadius: 5,
-        background: 'repeating-linear-gradient(45deg, #2a2a3a 0 5px, #3a3a4a 5px 10px)',
-        border: '1px solid #000',
-        boxShadow: '0 2px 6px #0008',
-      }} />
+        position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)',
+        background: '#0a0a1e', border: '1px solid #6c4bd8', borderRadius: 8, padding: 14,
+        zIndex: 100, maxWidth: 360,
+      }}>
+        <div style={{ fontWeight: 800 }}>{def?.name ?? 'Face-down'}</div>
+        <div style={{ fontSize: 12, color: '#aaa' }}>{def ? statBadge(def) : '—'}</div>
+        <button onClick={onClose} style={{ marginTop: 8, background: '#333', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer' }}>Close</button>
+      </div>
     );
   }
-  const def = CARDS[defId];
-  if (!def) return null;
-  const meta = COLOR_META[def.color];
   return (
-    <CardHover defId={defId}>
-    <div onClick={onClick}
-      onMouseEnter={e => {
-        e.currentTarget.style.transform = `${instance?.tapped ? 'rotate(8deg) ' : ''}translateY(-4px) scale(1.08)`;
-        e.currentTarget.style.zIndex = '20';
-        e.currentTarget.style.boxShadow = `0 6px 18px ${meta.hex}aa, 0 0 12px ${meta.hex}88`;
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.transform = instance?.tapped ? 'rotate(8deg)' : '';
-        e.currentTarget.style.zIndex = '';
-        e.currentTarget.style.boxShadow = instance?.tapped
-          ? 'inset 0 0 0 3px #0008, 0 2px 6px #000a'
-          : selected ? `0 0 14px ${meta.hex}, 0 0 4px #ffeb3b` : '0 2px 6px #000a';
-      }}
-      style={{
-        width: 68, height: 96, padding: 3, borderRadius: 6,
-        background: meta.hex, color: meta.ink,
-        border: selected ? '2px solid #ffeb3b' : targetable ? '2px dashed #ffeb3b' : '1px solid #000',
-        cursor: onClick ? 'pointer' : 'default',
-        boxShadow: instance?.tapped
-          ? 'inset 0 0 0 3px #0008, 0 2px 6px #000a'
-          : selected ? `0 0 14px ${meta.hex}, 0 0 4px #ffeb3b` : '0 2px 6px #000a',
-        transform: instance?.tapped ? 'rotate(8deg)' : undefined,
-        opacity: instance?.summoningSick && def.type === 'meme' ? 0.6 : 1,
-        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-        fontFamily: 'system-ui',
-        position: 'relative',
-        transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-      }}>
-      <div style={{ fontSize: 8, fontWeight: 800, lineHeight: 1.0, overflow: 'hidden' }}>{def.name}</div>
-      {def.power != null && def.toughness != null && (() => {
-        const bonus = pumpBonus ?? 0;
-        const pow = (def.power ?? 0) + bonus;
-        const tou = (def.toughness ?? 1) + bonus - (instance?.damage ?? 0);
-        return (
-          <div style={{ fontSize: 10, fontWeight: 800, alignSelf: 'flex-end',
-            background: '#000a', padding: '0 4px', borderRadius: 3,
-            color: bonus > 0 ? '#7CFC7C' : undefined,
-            textShadow: bonus > 0 ? '0 0 4px #0f0' : undefined }}>
-            {pow}/{tou}
-          </div>
-        );
-      })()}
-      {footer && <div style={{ fontSize: 7, lineHeight: 1.0 }}>{footer}</div>}
-    </div>
-    </CardHover>
-  );
-}
-
-function Side({
-  title, side, deckCount, face,
-  onNodeClick, onMemeClick, onMachineClick,
-  memeTargetable, machineTargetable,
-  attackingUids, blocks, selectedBlocker,
-}: {
-  title: string;
-  side: GState['players'][string];
-  deckCount: number;
-  face: 'up' | 'down';
-  onNodeClick?: (uid: string) => void;
-  onMemeClick?: (uid: string) => void;
-  onMachineClick?: (uid: string) => void;
-  memeTargetable?: boolean;
-  machineTargetable?: boolean;
-  attackingUids?: string[];
-  blocks?: Record<string, string[]>;
-  selectedBlocker?: string;
-}) {
-  return (
-    <div style={{ marginBottom: 6 }}>
-      <div style={{ fontSize: 12, opacity: 0.7 }}>{title} — Hand: {side.hand.length} · Deck: {deckCount} · Graveyard: {side.graveyard.length}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        <Zone label="Nodes"    instances={side.nodes}    onClick={onNodeClick} />
-        <Zone label="Memes"    instances={side.memes}
-          onClick={onMemeClick}
-          highlightUids={attackingUids}
-          selectedUid={selectedBlocker}
-          targetable={memeTargetable}
-          blocks={blocks}
-        />
-        <Zone label="Machines" instances={side.machines}
-          onClick={onMachineClick}
-          targetable={machineTargetable}
-        />
+    <div style={{
+      position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)',
+      background: '#0a0a1e', border: '1px solid #6c4bd8', borderRadius: 8, padding: 14,
+      zIndex: 100, maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      <div style={{ fontWeight: 800 }}>{def?.name ?? 'Face-down'}</div>
+      <div style={{ fontSize: 11, color: '#aaa' }}>{def?.text ?? ''}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {actions.map((a, i) => (
+          <button key={i} onClick={a.fn} disabled={a.disabled}
+            style={{
+              background: '#6c4bd8', color: '#fff', border: 'none', padding: '6px 12px',
+              borderRadius: 4, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+            }}>{a.label}</button>
+        ))}
+        <button onClick={onClose}
+          style={{ background: '#333', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>
+          Cancel
+        </button>
       </div>
     </div>
   );
 }
 
-function Zone({
-  label, instances, onClick,
-  highlightUids = [], selectedUid, targetable, blocks,
-}: {
-  label: string;
-  instances: Instance[];
-  onClick?: (uid: string) => void;
-  highlightUids?: string[];
-  selectedUid?: string;
-  targetable?: boolean;
-  blocks?: Record<string, string[]>;
-}) {
-  return (
-    <div style={{ flex: 1, minWidth: 240, padding: 4, border: '1px solid #333' }}>
-      <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 2 }}>{label}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-        {instances.length === 0 && <div style={{ fontSize: 11, opacity: 0.4 }}>—</div>}
-        {instances.map(inst => {
-          const attacking = highlightUids.includes(inst.uid);
-          const blockedBy = blocks?.[inst.uid] ?? [];
-          return (
-            <div key={inst.uid} style={{ position: 'relative' }}>
-              <CardFace
-                defId={inst.defId}
-                instance={inst}
-                selected={inst.uid === selectedUid || attacking}
-                onClick={onClick ? () => onClick(inst.uid) : undefined}
-                footer={
-                  <>
-                    <span style={{ opacity: 0.6 }}>{inst.uid}</span>
-                    {attacking && <span style={{ color: '#f55', marginLeft: 4 }}>⚔️</span>}
-                    {blockedBy.length > 0 && <span style={{ color: '#5cf', marginLeft: 4 }}>🛡{blockedBy.length}</span>}
-                  </>
-                }
-              />
-              {targetable && <div style={{
-                position: 'absolute', inset: 0, border: '2px dashed #ff0', pointerEvents: 'none',
-              }} />}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+// ── Action log ─────────────────────────────────────────────────────────────
 
-function CombatStrip({ G, ctx, myId }: { G: GState; ctx: any; myId: string }) {
-  if (G.combat.attackers.length === 0) return <div style={{ fontSize: 12, opacity: 0.5 }}>No combat in progress.</div>;
+function ActionLog({ log }: { log: string[] }) {
   return (
-    <div style={{ padding: 6, background: '#1a1a1a', border: '1px solid #444' }}>
-      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-        Combat — attacker: P{ctx.currentPlayer}
-      </div>
-      {G.combat.attackers.map(a => (
-        <div key={a.memeUid} style={{ fontSize: 12 }}>
-          Attacker <b>{a.memeUid}</b> blocked by: {G.combat.blocks[a.memeUid]?.join(', ') || '(none)'}
-        </div>
+    <div style={{
+      maxHeight: 160, overflowY: 'auto', padding: 8, background: '#0a0a1e',
+      border: '1px solid #333', borderRadius: 6, fontSize: 11, lineHeight: 1.4, color: '#ccc',
+    }}>
+      {log.slice(-50).map((l, i) => (
+        <div key={i}>{l}</div>
       ))}
+    </div>
+  );
+}
+
+// ── Win modal ──────────────────────────────────────────────────────────────
+
+function GameOverModal({ ctx, myId, G }: { ctx: any; myId: string; G: GState }) {
+  if (!ctx.gameover) return null;
+  const winner = ctx.gameover.winner;
+  const draw = ctx.gameover.draw;
+  const iWon = winner === myId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 300,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        background: '#0a0a1e', border: `2px solid ${iWon ? '#4ade80' : draw ? '#facc15' : '#dc2626'}`,
+        borderRadius: 12, padding: 32, textAlign: 'center', maxWidth: 480,
+      }}>
+        <div style={{ fontSize: 32, fontWeight: 900, marginBottom: 12, color: iWon ? '#4ade80' : draw ? '#facc15' : '#dc2626' }}>
+          {draw ? 'Draw' : iWon ? 'Victory!' : 'Defeat'}
+        </div>
+        <div style={{ color: '#aaa', marginBottom: 8 }}>
+          {draw ? 'Both Duelists reached 0 LP.' :
+            iWon ? `You reduced ${G.players[winner === '0' ? '1' : '0'].profileName}'s LP to 0.` :
+                  `${G.players[winner].profileName} reduced your LP to 0.`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main board export ──────────────────────────────────────────────────────
+
+export function ChainsBoard(props: Props) {
+  const { G, ctx, moves, playerID } = props;
+  const myId = playerID ?? '0';
+  const oppId = myId === '0' ? '1' : '0';
+  const mobile = useIsMobile();
+
+  const [selectedHandIdx, setSelectedHandIdx] = useState<number | null>(null);
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [attackerUid, setAttackerUid] = useState<string | null>(null);
+
+  const isMyTurn = ctx.currentPlayer === myId;
+  const me = G.players[myId];
+  const opp = G.players[oppId];
+
+  // If our priority is requested, surface a banner.
+  const responseRequired = G.priorityResponse?.playerID === myId;
+
+  // Resolve attack: when a target is picked, declare it and then ask for resolve.
+  function handlePickTarget(uid: string | null) {
+    if (!attackerUid) return;
+    moves.declareAttack(attackerUid, uid ?? '__direct__');
+    setAttackerUid(null);
+    setSelectedUid(null);
+  }
+
+  // Battle: direct attack button
+  const canDirectAttack = useMemo(() => {
+    if (!attackerUid) return false;
+    const oppHasMonsters = opp.monsterZones.some(Boolean) || !!opp.extraMonsterZone;
+    return !oppHasMonsters;
+  }, [attackerUid, opp.monsterZones, opp.extraMonsterZone]);
+
+  // Auto-resolve attack once damage_window opens with no priorityResponse.
+  useEffect(() => {
+    if (G.battle.kind === 'damage_window' && !G.priorityResponse) {
+      const t = setTimeout(() => { try { moves.resolveAttack(); } catch { /* ignore */ } }, 400);
+      return () => clearTimeout(t);
+    }
+  }, [G.battle.kind, G.priorityResponse, moves]);
+
+  // Pre-game pick & mulligan UIs.
+  if (ctx.phase === 'pick' && me.needsColorPick) {
+    return <ColorPickScreen myId={myId} moves={moves} />;
+  }
+  if (ctx.phase === 'mulligan' && !G.mulligan.done[myId]) {
+    return <MulliganModal G={G} myId={myId} moves={moves} />;
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#06061a', color: '#fff',
+      padding: mobile ? 8 : 16, fontFamily: 'system-ui, sans-serif',
+    }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        {/* Opponent identity + LP */}
+        <PlayerBar player={opp} isCurrent={ctx.currentPlayer === oppId} side="opp" />
+
+        {/* Opponent hand (face-down) */}
+        <HandBar hand={opp.hand} opponent />
+
+        {/* Phase indicator */}
+        <PhaseBar ctx={ctx} myId={myId} moves={moves} G={G} />
+
+        {responseRequired && (
+          <div style={{
+            padding: 10, background: '#facc15', color: '#000', borderRadius: 6,
+            fontWeight: 700, textAlign: 'center', marginBottom: 8,
+          }}>
+            Your turn to respond — chain a card or pass.
+          </div>
+        )}
+
+        {attackerUid && (
+          <div style={{
+            padding: 10, background: '#dc2626', color: '#fff', borderRadius: 6,
+            fontWeight: 700, textAlign: 'center', marginBottom: 8,
+            display: 'flex', gap: 10, justifyContent: 'center', alignItems: 'center',
+          }}>
+            Pick a target for {CARDS[(findInst(G, attackerUid)?.defId) ?? '']?.name ?? 'attacker'}
+            {canDirectAttack && (
+              <button onClick={() => handlePickTarget(null)}
+                style={{ background: '#fff', color: '#000', border: 'none', padding: '4px 12px', borderRadius: 4, fontWeight: 800, cursor: 'pointer' }}>
+                Direct Attack
+              </button>
+            )}
+            <button onClick={() => setAttackerUid(null)}
+              style={{ background: 'transparent', color: '#fff', border: '1px solid #fff', padding: '4px 10px', borderRadius: 4, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* The YGO playmat — both players' fields with image background */}
+        <YgoPlaymat
+          G={G} myId={myId} oppId={oppId}
+          selectedUid={selectedUid} attackerUid={attackerUid}
+          onClickMonster={(u) => {
+            if (attackerUid) {
+              if (u === attackerUid) { setAttackerUid(null); return; }
+              // Picking an opponent monster while attacking = chosen target
+              const inst = findInst(G, u);
+              const ownerId = findOwner(G, u);
+              if (inst && ownerId === oppId) { handlePickTarget(u); return; }
+            }
+            setSelectedUid(u === selectedUid ? null : u);
+          }}
+          onClickSpellTrap={(u) => setSelectedUid(u === selectedUid ? null : u)}
+        />
+
+        {/* My identity + LP */}
+        <PlayerBar player={me} isCurrent={isMyTurn} side="me" />
+
+        {/* My hand */}
+        <HandBar hand={me.hand} selected={selectedHandIdx}
+          onSelect={(i) => { setSelectedHandIdx(i === selectedHandIdx ? null : i); setSelectedUid(null); }} />
+
+        {/* Action log */}
+        <div style={{ marginTop: 8 }}>
+          <ActionLog log={G.log} />
+        </div>
+
+        {/* Floating action panels */}
+        <HandActionPanel G={G} myId={myId} ctx={ctx} moves={moves}
+          selectedHandIdx={selectedHandIdx}
+          onClose={() => setSelectedHandIdx(null)} />
+
+        <MonsterActionPanel G={G} myId={myId} ctx={ctx} moves={moves}
+          selectedUid={selectedUid}
+          attackerUid={attackerUid}
+          onClose={() => setSelectedUid(null)}
+          onPickAttacker={(u) => { setAttackerUid(u); setSelectedUid(null); }}
+          onPickTarget={(u) => handlePickTarget(u)}
+        />
+
+        <ChainStackPanel chain={G.chain} />
+        <GameOverModal ctx={ctx} myId={myId} G={G} />
+      </div>
+    </div>
+  );
+}
+
+function findInst(G: GState, uid: string): Instance | null {
+  for (const pid of Object.keys(G.players)) {
+    const p = G.players[pid];
+    for (const z of [...p.monsterZones, p.extraMonsterZone, ...p.spellTrapZones, p.fieldZone]) {
+      if (z?.uid === uid) return z;
+    }
+  }
+  return null;
+}
+
+function findOwner(G: GState, uid: string): string | null {
+  for (const pid of Object.keys(G.players)) {
+    const p = G.players[pid];
+    for (const z of [...p.monsterZones, p.extraMonsterZone, ...p.spellTrapZones, p.fieldZone]) {
+      if (z?.uid === uid) return pid;
+    }
+  }
+  return null;
+}
+
+function ColorPickScreen({ myId, moves }: { myId: string; moves: any }) {
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#06061a', color: '#fff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }}>
+      <div style={{ textAlign: 'center', maxWidth: 720 }}>
+        <div style={{ fontSize: 24, fontWeight: 900, marginBottom: 16 }}>Choose Your Chain (Player {myId})</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+          {(['bnb','sol','avax','eth','xrp'] as Color[]).map(c => {
+            const meta = COLOR_META[c];
+            return (
+              <button key={c} onClick={() => moves.chooseColor(c)}
+                style={{
+                  background: meta.hex, color: meta.ink, border: '2px solid #000',
+                  borderRadius: 8, padding: 16, fontWeight: 800, fontSize: 14, cursor: 'pointer',
+                }}>
+                {meta.glyph} · {meta.name}
+                <div style={{ fontSize: 10, marginTop: 4, opacity: 0.8 }}>{meta.attribute}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

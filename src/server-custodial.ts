@@ -1,4 +1,4 @@
-// Custodial $MASTER wager server — escrows deposits in a server-controlled
+// Custodial $DUEL wager server — escrows deposits in a server-controlled
 // wallet and pays out on game end. Lives beside the Anchor settle path
 // (src/server-wager.ts); the client chooses one or the other via
 // VITE_WAGER_MODE.
@@ -148,7 +148,7 @@ export async function createIntent(args: {
   const kp = escrow();
   if (!kp) throw new Error('Custodial wagers not enabled on this server');
   if (!Number.isFinite(args.amount) || args.amount < MIN_UI || args.amount > MAX_UI) {
-    throw new Error(`Wager must be between ${MIN_UI} and ${MAX_UI} $MASTER`);
+    throw new Error(`Wager must be between ${MIN_UI} and ${MAX_UI} $DUEL`);
   }
   if (args.playerID !== '0' && args.playerID !== '1') throw new Error('bad playerID');
   if (!args.matchID || args.matchID.length > 64) throw new Error('bad matchID');
@@ -262,7 +262,7 @@ export async function markFunded(args: {
     }
   }
   // Log memo to make missing-memo cases obvious in prod.
-  if (!sawTransfer) throw new Error('deposit tx did not transfer the expected $MASTER amount to escrow');
+  if (!sawTransfer) throw new Error('deposit tx did not transfer the expected $DUEL amount to escrow');
   if (!sawMemo) console.warn('[custodial] memo missing on', args.signature, 'expected', expectedMemo);
 
   const col = args.playerID === '0' ? 'p0' : 'p1';

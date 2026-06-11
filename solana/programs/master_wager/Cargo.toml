@@ -1,7 +1,7 @@
 [package]
 name = "master_wager"
 version = "0.1.0"
-description = "Memetic Masters $MASTER token escrow + settlement"
+description = "Chain Duels $DUEL token escrow + settlement"
 edition = "2021"
 
 [lib]

@@ -28,6 +28,7 @@ import type { Difficulty } from './bot';
 import type { SoloMode } from './SoloClient';
 import { saveDailyResult, todayKey, todayBest } from './dailyChallenge';
 import { BoostersPage } from './Boosters';
+import { useOwnedCards } from './owned-cards';
 import { MasterquestPage } from './masterquest/MasterquestPage';
 import { listOwnedSprotoGremlins, SPROTO_COLLECTION_MINT, type OwnedNft } from './nft-showcase';
 import ShinyText, { ShinyBrand, ShinyButtonLabel } from './ShinyText';
@@ -316,13 +317,13 @@ function Login({ onLogin, onFirstTime }: {
       {/* Background image layer */}
       <div aria-hidden style={{
         position: 'fixed', inset: 0, zIndex: 0,
-        backgroundImage: 'url(/lobby-bg.png?v=2)',
+        backgroundImage: 'url(/home-bg.png)',
         backgroundSize: 'cover', backgroundPosition: 'center',
-        filter: 'blur(3px) brightness(0.35) saturate(0.85)',
+        filter: 'blur(2px) brightness(0.45) saturate(0.95)',
       }} />
       <div aria-hidden style={{
         position: 'fixed', inset: 0, zIndex: 0,
-        background: 'radial-gradient(ellipse at 30% 20%, rgba(138,43,226,0.30), transparent 55%), radial-gradient(ellipse at 80% 80%, rgba(79,209,197,0.18), transparent 55%), linear-gradient(180deg, rgba(5,5,20,0.65), rgba(5,5,20,0.85))',
+        background: 'radial-gradient(ellipse at 30% 20%, rgba(138,43,226,0.22), transparent 55%), radial-gradient(ellipse at 80% 80%, rgba(79,209,197,0.14), transparent 55%), linear-gradient(180deg, rgba(5,5,20,0.45), rgba(5,5,20,0.65))',
       }} />
       {/* Drifting fog */}
       <div aria-hidden style={{
@@ -349,233 +350,256 @@ function Login({ onLogin, onFirstTime }: {
         })}
       </div>
 
-      {/* Content grid */}
+      {/* Content — centered hero up top, two parallel auth cards below */}
       <div style={{
         position: 'relative', zIndex: 2,
-        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '40px 22px',
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        padding: '60px 22px 100px',
+        gap: 28,
       }}>
-        <div style={{
-          display: 'grid', gap: 36, alignItems: 'center',
-          gridTemplateColumns: 'minmax(0, 1fr)',
-          maxWidth: 1180, width: '100%',
-        }} className="login-layout">
-          <style>{`
-            @media (min-width: 980px) {
-              .login-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 560px) !important; }
-              .login-char { display: flex !important; }
-            }
-          `}</style>
+        <style>{`
+          @media (min-width: 920px) {
+            .login-cards { grid-template-columns: 1fr 1fr !important; }
+          }
+        `}</style>
 
-          {/* Character artwork (desktop) */}
-          <div className="login-char login-fadein" style={{
-            display: 'none', justifyContent: 'center', alignItems: 'center',
-            position: 'relative', minHeight: 480,
+        {/* Hero band */}
+        <div className="login-fadein" style={{ textAlign: 'center', maxWidth: 760 }}>
+          <div style={{
+            fontFamily: '"Cinzel", "Times New Roman", serif',
+            fontWeight: 900, fontSize: 'clamp(34px, 5.6vw, 64px)', letterSpacing: 8,
+            color: GOLD,
+            animation: 'loginGlow 3.6s ease-in-out infinite',
+            background: 'linear-gradient(180deg, #ffe28a 0%, #d4af37 55%, #8a6a16 100%)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.85))',
+            lineHeight: 1,
+          }}>CHAIN DUELS</div>
+          <div style={{
+            marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 14,
+            padding: '4px 14px', borderRadius: 999,
+            border: `1px solid ${GOLD}44`, background: 'rgba(10,5,30,0.55)',
+            fontFamily: '"Cinzel", "Times New Roman", serif',
+            fontWeight: 600, letterSpacing: 6, fontSize: 12, color: GOLD,
+            textShadow: `0 0 12px ${GOLD}66`, backdropFilter: 'blur(6px)',
+          }}>⚔  ENTER THE ARENA  ⚔</div>
+          <div style={{
+            marginTop: 14, fontSize: 14, color: '#d9d1bf', maxWidth: 520, margin: '14px auto 0',
+            textShadow: '0 1px 6px #000',
+          }}>Pick how you want to enter the duel — link a Solana wallet to keep your collection
+          on-chain, or hop in instantly as a guest.</div>
+        </div>
+
+        {/* Two parallel auth cards */}
+        <div className="login-cards login-fadein" style={{
+          display: 'grid', gap: 18, gridTemplateColumns: '1fr',
+          width: '100%', maxWidth: 880,
+        }}>
+          {/* ── Guest card (left) ─────────────────────────────────────── */}
+          <div style={{
+            background: 'rgba(20,15,40,0.78)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+            border: `1px solid ${GOLD}44`, borderRadius: 18,
+            padding: 22,
+            boxShadow: `0 0 40px ${GOLD}22, 0 16px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04)`,
+            display: 'flex', flexDirection: 'column', gap: 12,
           }}>
-            <div style={{
-              position: 'absolute', width: 460, height: 460,
-              background: `radial-gradient(circle, ${PURPLE}33 0%, transparent 65%)`,
-              filter: 'blur(8px)',
-            }} />
-            <img src="/intro.png" alt="" style={{
-              position: 'relative', zIndex: 1,
-              maxWidth: '100%', maxHeight: '70vh', width: 'auto',
-              borderRadius: 18,
-              filter: `drop-shadow(0 18px 38px ${PURPLE}55) drop-shadow(0 4px 18px ${GOLD}33)`,
-              animation: 'loginIdleFloat 6s ease-in-out infinite',
-            }} />
-          </div>
-
-          {/* Login + extras column */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            {/* Hero */}
-            <div className="login-fadein" style={{ textAlign: 'center', marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
-                fontFamily: '"Cinzel", "Times New Roman", serif',
-                fontWeight: 900, fontSize: 'clamp(28px, 4.2vw, 44px)', letterSpacing: 6,
-                color: GOLD,
-                animation: 'loginGlow 3.6s ease-in-out infinite',
-                background: 'linear-gradient(180deg, #ffe28a 0%, #d4af37 55%, #8a6a16 100%)',
-                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.7))',
-              }}>⚔ MEMETIC MASTERS</div>
-              <div style={{
-                fontFamily: '"Cinzel", "Times New Roman", serif',
-                fontWeight: 600, letterSpacing: 8, fontSize: 14, color: PURPLE,
-                marginTop: 4, textShadow: `0 0 14px ${PURPLE}88`,
-              }}>ENTER THE ARENA</div>
-              <div style={{
-                marginTop: 8, fontSize: 13, color: '#bdb6a8', maxWidth: 460, marginLeft: 'auto', marginRight: 'auto',
-              }}>A fantasy trading card game where memes become legends.</div>
-            </div>
-
-            {/* Login panel */}
-            <div className="login-fadein" style={{
-              background: 'rgba(20,20,40,0.78)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-              border: `1px solid ${GOLD}40`, borderRadius: 24,
-              padding: 24,
-              boxShadow: `0 0 40px ${PURPLE}33, 0 16px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04)`,
-            }}>
-              <div style={{
-                fontFamily: '"Cinzel", "Times New Roman", serif',
-                fontSize: 13, fontWeight: 700, letterSpacing: 4, color: GOLD,
-                textAlign: 'center', marginBottom: 14,
-              }}>CONNECT YOUR REALM</div>
-
-              {/* Wallet cards — 4 Solana options */}
-              <div style={{
-                display: 'grid', gap: 12,
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              }}>
-                {([
-                  { kind: 'phantom',  label: 'Phantom',  gradient: 'linear-gradient(135deg, #AB9FF2 0%, #6E5BD9 100%)', install: 'https://phantom.app/' },
-                  { kind: 'solflare', label: 'Solflare', gradient: 'linear-gradient(135deg, #FFC517 0%, #FC9E37 100%)', install: 'https://solflare.com/' },
-                  { kind: 'backpack', label: 'Backpack', gradient: 'linear-gradient(135deg, #E33E3F 0%, #B8323C 100%)', install: 'https://backpack.app/' },
-                  { kind: 'jupiter',  label: 'Jupiter',  gradient: 'linear-gradient(135deg, #C7F284 0%, #6BCBA2 100%)', install: 'https://jup.ag/mobile' },
-                ] as Array<{ kind: SolanaWalletKind; label: string; gradient: string; install: string }>).map(w => {
-                  const detected = detectSolanaWallets().find(d => d.kind === w.kind)?.installed;
-                  return (
-                    <button
-                      key={w.kind}
-                      className="login-walletcard"
-                      onClick={() => detected ? doConnect(w.kind) : window.open(w.install, '_blank', 'noopener')}
-                      disabled={!!busy}
-                      style={{
-                        background: w.gradient,
-                        color: '#0a0a18',
-                        border: 'none', borderRadius: 14,
-                        padding: '16px 16px', cursor: busy ? 'not-allowed' : 'pointer',
-                        textAlign: 'left', fontFamily: 'inherit',
-                        boxShadow: '0 10px 26px rgba(138,43,226,0.32), inset 0 1px 0 rgba(255,255,255,0.25)',
-                        opacity: busy && busy !== w.kind ? 0.45 : 1,
-                        filter: detected ? 'none' : 'grayscale(0.4)',
-                      }}
-                    >
-                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 3, opacity: 0.85 }}>⚡ SOLANA</div>
-                      <div style={{ fontFamily: '"Cinzel", serif', fontSize: 18, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
-                        {busy === w.kind ? 'Summoning…' : w.label}
-                      </div>
-                      <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 2 }}>
-                        {busy === w.kind ? '…' : (detected ? '→ Connect Wallet' : '↗ Install First')}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {err && (
-                <div style={{
-                  marginTop: 14, padding: '10px 12px', borderRadius: 8,
-                  background: 'rgba(217,75,75,0.12)', border: '1px solid rgba(217,75,75,0.45)',
-                  color: '#ffb8b8', fontSize: 13,
-                }}>
-                  <div>{err}</div>
-                  {/context invalidated|reloaded or updated/i.test(err) && (
-                    <button onClick={() => window.location.reload()} style={{
-                      marginTop: 8, padding: '6px 12px', borderRadius: 6,
-                      background: '#D4AF37', color: '#1a1408', fontWeight: 700,
-                      border: 'none', cursor: 'pointer', fontSize: 12,
-                    }}>Reload Page Now</button>
-                  )}
-                </div>
-              )}
-
-              {/* Divider */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 12, margin: '20px 2px 16px',
-              }}>
-                <div style={{ flex: 1, height: 1, background: `linear-gradient(90deg, transparent, ${GOLD}66, transparent)` }} />
-                <div style={{
-                  fontFamily: '"Cinzel", serif', fontSize: 11, letterSpacing: 4, color: GOLD, fontWeight: 700,
-                }}>OR</div>
-                <div style={{ flex: 1, height: 1, background: `linear-gradient(90deg, transparent, ${GOLD}66, transparent)` }} />
-              </div>
-
-              {/* Guest */}
+                width: 34, height: 34, borderRadius: 8,
+                background: `linear-gradient(135deg, ${GOLD}, #8a6a16)`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, color: '#1a1408',
+              }}>🎟</div>
               <div>
                 <div style={{
-                  fontFamily: '"Cinzel", serif', fontSize: 13, fontWeight: 700, letterSpacing: 4, color: GOLD,
-                  textAlign: 'center', marginBottom: 10,
-                }}>ENTER AS GUEST</div>
-                <label style={{
-                  display: 'block', fontSize: 11, color: '#9c9282', letterSpacing: 2, fontWeight: 700,
-                  textTransform: 'uppercase', marginBottom: 6,
-                }}>Choose your summoner name</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onLogin(name.trim()); }}
-                    placeholder="e.g. MoonPepe"
-                    style={{
-                      flex: 1, padding: '12px 14px', fontSize: 14,
-                      background: 'rgba(10,10,20,0.75)', color: '#fff',
-                      border: `1px solid ${GOLD}55`, borderRadius: 10, outline: 'none',
-                      fontFamily: 'inherit',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={randomName}
-                    title="Generate name"
-                    style={{
-                      padding: '0 14px', fontSize: 13, fontWeight: 700,
-                      background: 'rgba(138,43,226,0.18)', color: '#d6c4ff',
-                      border: `1px solid ${PURPLE}66`, borderRadius: 10, cursor: 'pointer',
-                      fontFamily: 'inherit', whiteSpace: 'nowrap',
-                    }}
-                  >🎲 Random</button>
+                  fontFamily: '"Cinzel", serif', fontSize: 16, fontWeight: 800,
+                  letterSpacing: 3, color: GOLD,
+                }}>QUICK PLAY</div>
+                <div style={{ fontSize: 11, color: '#9c9282', letterSpacing: 1 }}>
+                  Pick a duelist name and jump in
                 </div>
-
-                <button
-                  className="login-cta"
-                  onClick={() => name.trim() && onLogin(name.trim())}
-                  disabled={!name.trim()}
-                  style={{
-                    marginTop: 14, width: '100%',
-                    padding: '14px 18px',
-                    background: name.trim()
-                      ? 'linear-gradient(135deg, #D4AF37 0%, #F6D365 100%)'
-                      : 'rgba(60,55,30,0.45)',
-                    color: name.trim() ? '#050514' : '#7a7060',
-                    border: 'none', borderRadius: 12,
-                    fontFamily: '"Cinzel", serif', fontWeight: 800,
-                    letterSpacing: 4, fontSize: 15, textTransform: 'uppercase',
-                    cursor: name.trim() ? 'pointer' : 'not-allowed',
-                    boxShadow: name.trim() ? `0 0 24px ${GOLD}66, 0 8px 22px rgba(0,0,0,0.5)` : 'none',
-                    animation: name.trim() ? 'loginPulse 2.4s ease-out infinite' : 'none',
-                  }}
-                >⚔ Enter Arena</button>
               </div>
             </div>
 
-            {/* Feature cards */}
-            <div className="login-fadein" style={{
-              display: 'grid', gap: 8,
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-            }}>
-              {[
-                { i: '⚔️', t: 'Strategic Battles' },
-                { i: '🃏', t: 'Collect Cards' },
-                { i: '⛽', t: 'Master Gas' },
-                { i: '🌐', t: 'Multi-Chain' },
-                { i: '🏆', t: 'Climb Ranked' },
-              ].map(f => (
-                <div key={f.t} style={{
-                  background: 'rgba(20,20,40,0.55)', backdropFilter: 'blur(6px)',
-                  border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10,
-                  padding: '10px 8px', textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: 18, filter: `drop-shadow(0 0 6px ${GOLD}88)` }}>{f.i}</div>
-                  <div style={{ marginTop: 2, fontSize: 11, color: '#c8bea8', fontWeight: 600, letterSpacing: 0.5 }}>{f.t}</div>
-                </div>
-              ))}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && name.trim()) onLogin(name.trim()); }}
+                placeholder="e.g. ChainKnight"
+                style={{
+                  flex: 1, padding: '12px 14px', fontSize: 14,
+                  background: 'rgba(10,10,20,0.85)', color: '#fff',
+                  border: `1px solid ${GOLD}55`, borderRadius: 10, outline: 'none',
+                  fontFamily: 'inherit',
+                }}
+              />
+              <button
+                type="button"
+                onClick={randomName}
+                title="Generate name"
+                style={{
+                  padding: '0 14px', fontSize: 13, fontWeight: 700,
+                  background: 'rgba(138,43,226,0.22)', color: '#d6c4ff',
+                  border: `1px solid ${PURPLE}66`, borderRadius: 10, cursor: 'pointer',
+                  fontFamily: 'inherit', whiteSpace: 'nowrap',
+                }}
+              >🎲</button>
             </div>
 
-            <div style={{ textAlign: 'center', fontSize: 11, color: '#6a6253', letterSpacing: 1, marginTop: 6 }}>
-              $MASTER · DpPowzjETiU6421ReuwBB8XmDB7sMyB2JGzFLssYpump
+            <button
+              className="login-cta"
+              onClick={() => name.trim() && onLogin(name.trim())}
+              disabled={!name.trim()}
+              style={{
+                marginTop: 4, width: '100%',
+                padding: '14px 18px',
+                background: name.trim()
+                  ? 'linear-gradient(135deg, #D4AF37 0%, #F6D365 100%)'
+                  : 'rgba(60,55,30,0.45)',
+                color: name.trim() ? '#050514' : '#7a7060',
+                border: 'none', borderRadius: 12,
+                fontFamily: '"Cinzel", serif', fontWeight: 800,
+                letterSpacing: 4, fontSize: 14, textTransform: 'uppercase',
+                cursor: name.trim() ? 'pointer' : 'not-allowed',
+                boxShadow: name.trim() ? `0 0 24px ${GOLD}66, 0 8px 22px rgba(0,0,0,0.5)` : 'none',
+                animation: name.trim() ? 'loginPulse 2.4s ease-out infinite' : 'none',
+              }}
+            >⚔ Enter Arena</button>
+
+            <div style={{
+              marginTop: 6, padding: '8px 10px', borderRadius: 8,
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
+              fontSize: 11, color: '#9c9282', lineHeight: 1.5,
+            }}>
+              Guest progress lives on this device only. Link a wallet later from
+              your profile to migrate stats.
             </div>
           </div>
+
+          {/* ── Wallet card (right) ───────────────────────────────────── */}
+          <div style={{
+            background: 'rgba(20,15,40,0.78)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+            border: `1px solid ${PURPLE}55`, borderRadius: 18,
+            padding: 22,
+            boxShadow: `0 0 40px ${PURPLE}33, 0 16px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04)`,
+            display: 'flex', flexDirection: 'column', gap: 10,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: 8,
+                background: `linear-gradient(135deg, ${PURPLE}, #4a1d8a)`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, color: '#fff',
+              }}>⚡</div>
+              <div>
+                <div style={{
+                  fontFamily: '"Cinzel", serif', fontSize: 16, fontWeight: 800,
+                  letterSpacing: 3, color: '#d6c4ff',
+                }}>CONNECT WALLET</div>
+                <div style={{ fontSize: 11, color: '#9c9282', letterSpacing: 1 }}>
+                  Solana · keeps your decks &amp; record on-chain
+                </div>
+              </div>
+            </div>
+
+            {/* Compact vertical wallet list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {([
+                { kind: 'phantom',  label: 'Phantom',  swatch: '#AB9FF2', install: 'https://phantom.app/' },
+                { kind: 'solflare', label: 'Solflare', swatch: '#FFC517', install: 'https://solflare.com/' },
+                { kind: 'backpack', label: 'Backpack', swatch: '#E33E3F', install: 'https://backpack.app/' },
+                { kind: 'jupiter',  label: 'Jupiter',  swatch: '#C7F284', install: 'https://jup.ag/mobile' },
+              ] as Array<{ kind: SolanaWalletKind; label: string; swatch: string; install: string }>).map(w => {
+                const detected = detectSolanaWallets().find(d => d.kind === w.kind)?.installed;
+                const isBusy = busy === w.kind;
+                return (
+                  <button
+                    key={w.kind}
+                    className="login-walletcard"
+                    onClick={() => detected ? doConnect(w.kind) : window.open(w.install, '_blank', 'noopener')}
+                    disabled={!!busy}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 12px', cursor: busy ? 'not-allowed' : 'pointer',
+                      background: 'rgba(10,10,20,0.6)',
+                      color: '#fff',
+                      border: `1px solid ${w.swatch}55`, borderRadius: 10,
+                      fontFamily: 'inherit', textAlign: 'left',
+                      opacity: busy && !isBusy ? 0.4 : 1,
+                      filter: detected ? 'none' : 'grayscale(0.5)',
+                    }}
+                  >
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 6,
+                      background: `linear-gradient(135deg, ${w.swatch}, ${w.swatch}99)`,
+                      boxShadow: `0 0 12px ${w.swatch}66`,
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, fontFamily: '"Cinzel", serif', letterSpacing: 1 }}>
+                        {w.label}
+                      </div>
+                      <div style={{
+                        fontSize: 10, color: detected ? '#9bff9b' : '#bb8c4a', letterSpacing: 1.5,
+                        textTransform: 'uppercase', fontWeight: 700,
+                      }}>
+                        {isBusy ? 'Summoning…' : detected ? '● Detected' : '⚠ Not installed'}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#d6c4ff', fontWeight: 700 }}>
+                      {isBusy ? '…' : detected ? '→' : '↗'}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {err && (
+              <div style={{
+                marginTop: 4, padding: '10px 12px', borderRadius: 8,
+                background: 'rgba(217,75,75,0.12)', border: '1px solid rgba(217,75,75,0.45)',
+                color: '#ffb8b8', fontSize: 12,
+              }}>
+                <div>{err}</div>
+                {/context invalidated|reloaded or updated/i.test(err) && (
+                  <button onClick={() => window.location.reload()} style={{
+                    marginTop: 8, padding: '6px 12px', borderRadius: 6,
+                    background: '#D4AF37', color: '#1a1408', fontWeight: 700,
+                    border: 'none', cursor: 'pointer', fontSize: 12,
+                  }}>Reload Page Now</button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Feature ribbon — single horizontal row across the bottom */}
+        <div className="login-fadein" style={{
+          display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center',
+          maxWidth: 880, width: '100%',
+        }}>
+          {[
+            { i: '⚔️', t: 'Strategic Duels' },
+            { i: '🃏', t: 'Collect Cards' },
+            { i: '🔗', t: 'On-Chain Decks' },
+            { i: '🌐', t: '5 Chain Tribes' },
+            { i: '🏆', t: 'Ranked Ladder' },
+          ].map(f => (
+            <div key={f.t} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 999,
+              background: 'rgba(20,15,40,0.55)', backdropFilter: 'blur(6px)',
+              border: `1px solid ${GOLD}33`,
+            }}>
+              <span style={{ fontSize: 14, filter: `drop-shadow(0 0 6px ${GOLD}88)` }}>{f.i}</span>
+              <span style={{ fontSize: 11, color: '#c8bea8', fontWeight: 700, letterSpacing: 1 }}>{f.t}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ textAlign: 'center', fontSize: 11, color: '#7a7060', letterSpacing: 1 }}>
+          $DUEL · DpPowzjETiU6421ReuwBB8XmDB7sMyB2JGzFLssYpump
         </div>
       </div>
     </div>
@@ -733,7 +757,7 @@ function BgMusic({ src, storageKey }: { src: string; storageKey: string }) {
   );
 }
 
-function MenuMusic()   { return <BgMusic src="/menu-music.mp3"   storageKey="musicMuted" />; }
+function MenuMusic()   { return <BgMusic src="/home-music.mp3"   storageKey="musicMuted" />; }
 function BattleMusic() { return <BgMusic src="/battle-music.mp3" storageKey="battleMuted" />; }
 
 // ── Rules page (Interactive Rulebook) ──────────────────────────────────────
@@ -756,28 +780,30 @@ const RULES_TOKENS = {
 const RULES_FONT = "'Inter', 'Geist', 'Satoshi', system-ui, -apple-system, sans-serif";
 const RULES_HEAD = '"Cinzel", "Times New Roman", serif';
 
-type RulesSectionId = 'goal' | 'setup' | 'cards' | 'gas' | 'turn' | 'advanced' | 'example' | 'cheatsheet';
+type RulesSectionId = 'goal' | 'setup' | 'cards' | 'summon' | 'battle' | 'spelltrap' | 'turn' | 'example' | 'cheatsheet';
 
 const RULES_NAV: { id: RulesSectionId; label: string; icon: string }[] = [
   { id: 'goal',       label: 'Goal',           icon: '🏆' },
   { id: 'setup',      label: 'Setup',          icon: '⚔️' },
   { id: 'cards',      label: 'Card Types',     icon: '🃏' },
-  { id: 'gas',        label: 'Gas System',     icon: '⛽' },
-  { id: 'turn',       label: 'Turn Order',     icon: '🔄' },
-  { id: 'advanced',   label: 'Advanced',       icon: '📖' },
+  { id: 'summon',     label: 'Summoning',      icon: '✨' },
+  { id: 'battle',     label: 'Battle',         icon: '⚔️' },
+  { id: 'spelltrap',  label: 'Spells & Traps', icon: '📜' },
+  { id: 'turn',       label: 'Turn Phases',    icon: '🔄' },
   { id: 'example',    label: 'Example Turn',   icon: '🎮' },
   { id: 'cheatsheet', label: 'UI Cheat-sheet', icon: '⌨️' },
 ];
 
 const RULES_SEARCH_INDEX: { id: RulesSectionId; text: string }[] = [
-  { id: 'goal',       text: 'goal life 20 reduce opponent zero win last player standing' },
-  { id: 'setup',      text: 'setup chain bnb solana avalanche avax ethereum xrp 60 card deck draw 7 hand 20 life mulligan first player no draw' },
-  { id: 'cards',      text: 'card types node meme machine move land creature artifact enchantment spell instant power toughness permanent one-shot' },
-  { id: 'gas',        text: 'gas mana cost tap node color pool drain end of turn empty mixed' },
-  { id: 'turn',       text: 'turn phase untap draw main combat attack block damage end discard summoning sick haste' },
-  { id: 'advanced',   text: 'advanced summoning sickness haste blockers simultaneous damage graveyard discard max hand 7 discard down' },
-  { id: 'example',    text: 'example turn 1 play purple node tap gain gas cast pepe warrior end' },
-  { id: 'cheatsheet', text: 'ui click node tap card hand play meme attack blocker end turn button' },
+  { id: 'goal',       text: 'goal life points lp 8000 reduce opponent zero win deck out empty draw' },
+  { id: 'setup',      text: 'setup chain bnb solana avalanche avax ethereum xrp 40 60 card main deck extra deck 15 draw 5 hand 8000 life points first player no draw battle' },
+  { id: 'cards',      text: 'card types monster spell trap normal effect fusion synchro xyz ritual link pendulum continuous equip field quickplay counter atk def level rank attribute earth dark fire light water' },
+  { id: 'summon',     text: 'summoning normal summon tribute summon level 5 6 7 fusion synchro xyz ritual link pendulum flip set face-down face-up attack position defense extra deck zone monster zone' },
+  { id: 'battle',     text: 'battle phase attack atk def damage direct attack piercing destroyed monster zone face-up face-down position' },
+  { id: 'spelltrap',  text: 'spell trap normal continuous equip field quickplay quick-play ritual counter trap chain spell speed 1 2 3 negate activate set face-down' },
+  { id: 'turn',       text: 'turn phase draw standby main1 battle main2 end discard 6 hand size first player turn 1' },
+  { id: 'example',    text: 'example turn 1 first player draw skipped main1 normal summon end' },
+  { id: 'cheatsheet', text: 'ui hand card click summon set spell trap attack target advance phase end turn chain' },
 ];
 
 function RulesPage({ onBack }: { onBack: () => void }) {
@@ -939,7 +965,7 @@ function RulesPage({ onBack }: { onBack: () => void }) {
               ref={searchRef}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search rules… (e.g. combat, summoning sickness, gas)"
+              placeholder="Search rules… (e.g. tribute summon, chain, piercing)"
               style={{
                 flex: 1, padding: '10px 14px', fontSize: 14,
                 background: RULES_TOKENS.panel, color: '#fff',
@@ -951,27 +977,6 @@ function RulesPage({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       )}
-
-      {/* Intro video */}
-      <div style={{
-        position: 'relative', zIndex: 1,
-        maxWidth: 1100, margin: '20px auto 0', padding: '0 22px',
-      }}>
-        <div style={{
-          borderRadius: 14, overflow: 'hidden',
-          border: `1px solid ${RULES_TOKENS.border}`,
-          boxShadow: `0 0 40px rgba(212,175,55,0.18), 0 8px 28px rgba(0,0,0,0.5)`,
-          background: '#000',
-        }}>
-          <video
-            src="/rules-intro.mp4"
-            controls
-            playsInline
-            preload="metadata"
-            style={{ display: 'block', width: '100%', height: 'auto' }}
-          />
-        </div>
-      </div>
 
       {/* Hero */}
       <div style={{
@@ -985,7 +990,7 @@ function RulesPage({ onBack }: { onBack: () => void }) {
           background: 'linear-gradient(180deg, #ffe28a 0%, #d4af37 55%, #8a6a16 100%)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
           filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.6))',
-        }}>MEMETIC MASTERS</div>
+        }}>CHAIN DUELS</div>
         <div style={{
           fontFamily: RULES_HEAD, fontWeight: 600, fontSize: 20,
           letterSpacing: 12, color: RULES_TOKENS.purple, marginTop: 4,
@@ -1013,11 +1018,11 @@ function RulesPage({ onBack }: { onBack: () => void }) {
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12,
           }}>
             {[
-              { n: 1, t: 'Play Nodes',           c: RULES_TOKENS.gold },
-              { n: 2, t: 'Nodes make Gas',       c: RULES_TOKENS.purple },
-              { n: 3, t: 'Cast Memes',           c: RULES_TOKENS.blue },
-              { n: 4, t: 'Attack Opponent',      c: RULES_TOKENS.red },
-              { n: 5, t: 'Reduce Life 20 → 0',   c: RULES_TOKENS.green },
+              { n: 1, t: 'Build a 40-card deck', c: RULES_TOKENS.gold },
+              { n: 2, t: 'Summon monsters',      c: RULES_TOKENS.purple },
+              { n: 3, t: 'Set Spells & Traps',   c: RULES_TOKENS.blue },
+              { n: 4, t: 'Attack with ATK',      c: RULES_TOKENS.red },
+              { n: 5, t: 'Drop opp 8000 → 0 LP', c: RULES_TOKENS.green },
             ].map(s => (
               <div key={s.n} style={{
                 background: 'rgba(0,0,0,0.35)', borderRadius: 10,
@@ -1037,7 +1042,7 @@ function RulesPage({ onBack }: { onBack: () => void }) {
           </div>
           <div style={{
             marginTop: 14, textAlign: 'center', fontSize: 13, color: RULES_TOKENS.mute, fontStyle: 'italic',
-          }}>Last player standing wins.</div>
+          }}>Reduce opponent LP to 0 to win the duel.</div>
         </div>
       </div>
 
@@ -1115,12 +1120,13 @@ function RulesPage({ onBack }: { onBack: () => void }) {
 }
 
 const SECTION_SUMMARY: Record<RulesSectionId, string> = {
-  goal:       'Reduce your opponent\'s life from 20 → 0. Last player standing wins.',
-  setup:      '5 chains. 60-card deck. Start at 20 life with 7 cards.',
-  cards:      'Nodes, Memes, Machines, Moves — your full toolkit.',
-  gas:        'Tap Nodes to fuel your spells. Gas drains every turn.',
-  turn:       'Untap → Draw → Main → Combat → End.',
-  advanced:   'Summoning sickness, blockers, simultaneous damage, hand size.',
+  goal:       'Reduce your opponent\'s LP from 8000 → 0. Or empty their deck.',
+  setup:      '5 chains. 40–60 card Main + 0–15 Extra. Start at 8000 LP with 5 cards.',
+  cards:      'Monsters, Spells, Traps — every card belongs to one of these three families.',
+  summon:     'Normal Summon, Tribute Summon, Flip Summon, plus Fusion / Synchro / Xyz / Ritual / Link.',
+  battle:     'ATK vs ATK, ATK vs DEF, direct attack. Piercing, position changes, replays.',
+  spelltrap:  'Activation timing, Spell Speeds, chains, Counter Traps.',
+  turn:       'Draw → Standby → Main 1 → Battle → Main 2 → End. Hand cap 6.',
   example:    'Walk through Turn 1 step-by-step.',
   cheatsheet: 'Quick clicks for the in-match UI.',
 };
@@ -1186,30 +1192,35 @@ function renderSectionBody(id: RulesSectionId, highlight: (s: string) => React.R
     case 'goal':
       return (
         <div>
-          <p>{highlight('Reduce your opponent\'s life from 20 to 0. Last player standing wins.')}</p>
+          <p>{highlight('Reduce your opponent\'s Life Points from 8000 to 0. You also win if your opponent must draw from an empty deck.')}</p>
           <div style={{
             marginTop: 14, display: 'flex', justifyContent: 'center', gap: 18, flexWrap: 'wrap',
           }}>
-            <LifeOrb label="Start" value={20} color={RULES_TOKENS.green} />
+            <LifeOrb label="Start" value={8000} color={RULES_TOKENS.green} />
             <div style={{
               alignSelf: 'center', fontSize: 22, color: RULES_TOKENS.gold, fontWeight: 900,
               animation: 'rulesArrow 1.6s ease-in-out infinite',
             }}>➜</div>
             <LifeOrb label="Win" value={0} color={RULES_TOKENS.red} />
           </div>
+          <ul style={{ marginLeft: 18, marginTop: 14 }}>
+            <li>{highlight('Drop opponent to 0 LP.')}</li>
+            <li>{highlight('Or force them to draw with an empty Main Deck (deck-out).')}</li>
+            <li>{highlight('If both players hit 0 at once, the duel is a draw.')}</li>
+          </ul>
         </div>
       );
     case 'setup':
       return (
         <div>
-          <p>{highlight('Each player picks one of 5 chains, shuffles their 60-card deck, draws 7 cards, and starts at 20 life.')}</p>
+          <p>{highlight('Each player picks one of 5 chains, shuffles their Main Deck (40–60 cards) and Extra Deck (0–15 cards), draws 5 cards, and starts at 8000 LP.')}</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '14px 0' }}>
             {[
-              { n: 'BnB',        c: '#f3ba2f' },
-              { n: 'Solana',     c: '#9945ff' },
-              { n: 'Avalanche',  c: '#e84142' },
-              { n: 'Ethereum',   c: '#cfd8dc' },
-              { n: 'XRP',        c: '#8a8a8a' },
+              { n: 'BnB · EARTH',       c: '#f3ba2f' },
+              { n: 'Solana · DARK',     c: '#9945ff' },
+              { n: 'Avalanche · FIRE',  c: '#e84142' },
+              { n: 'Ethereum · LIGHT',  c: '#cfd8dc' },
+              { n: 'XRP · WATER',       c: '#8a8a8a' },
             ].map(x => (
               <div key={x.n} style={{
                 padding: '8px 14px', borderRadius: 999,
@@ -1219,52 +1230,82 @@ function renderSectionBody(id: RulesSectionId, highlight: (s: string) => React.R
             ))}
           </div>
           <ul style={{ marginLeft: 18 }}>
-            <li>{highlight('60-card deck in your chain color.')}</li>
-            <li>{highlight('Draw 7 cards. Start at 20 life.')}</li>
-            <li>{highlight('Max hand size 7 — discard down at end of turn.')}</li>
-            <li>{highlight('The first player skips their turn-1 draw.')}</li>
+            <li>{highlight('Main Deck must be 40–60 cards, max 3 copies of any card.')}</li>
+            <li>{highlight('Extra Deck holds 0–15 Fusion / Synchro / Xyz / Link / Pendulum monsters.')}</li>
+            <li>{highlight('Draw 5 cards. Start at 8000 Life Points.')}</li>
+            <li>{highlight('Each player has 5 Monster Zones, 5 Spell/Trap Zones, 1 Field Zone, and 1 Extra Monster Zone.')}</li>
+            <li>{highlight('Hand cap of 6 — discard the excess at the End Phase.')}</li>
+            <li>{highlight('The first player skips their first Draw Phase and cannot conduct a Battle Phase on turn 1.')}</li>
           </ul>
         </div>
       );
     case 'cards':
       return <CardTypesGrid highlight={highlight} />;
-    case 'gas':
+    case 'summon':
       return (
         <div>
-          <p>{highlight('Nodes generate Gas. Cards cost Gas. Gas drains at end of your turn — spend it or lose it.')}</p>
-          <GasFlowViz />
-          <ul style={{ marginLeft: 18, marginTop: 10 }}>
-            <li>{highlight('Tap a Node → +1 Gas of its color.')}</li>
-            <li>{highlight('A cost can be one color or mixed.')}</li>
-            <li>{highlight('Unspent Gas evaporates when your turn ends.')}</li>
+          <p>{highlight('You can Normal Summon (or Set) one monster per turn. Higher-Level monsters require Tributes. Special Summons (Fusion, Synchro, Xyz, Ritual, Link, Pendulum) have no per-turn limit, but each method has its own materials.')}</p>
+          <TributeFlowViz />
+          <ul style={{ marginLeft: 18, marginTop: 12 }}>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Normal Summon</b> — {highlight('Place a Level 1–4 monster from your hand in face-up Attack Position (once per turn).')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Normal Set</b> — {highlight('Place the same monster face-down in Defense Position instead. Cannot Normal Summon again that turn.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Tribute Summon</b> — {highlight('Level 5–6 needs 1 monster as Tribute, Level 7+ needs 2. Counts as your Normal Summon for the turn.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Flip Summon</b> — {highlight('Flip a face-down monster to face-up Attack Position. Not on the turn it was Set.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Fusion Summon</b> — {highlight('Use a Polymerization-style spell to send the listed materials and Special Summon a Fusion monster from your Extra Deck.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Synchro Summon</b> — {highlight('Send 1 face-up Tuner + 1+ non-Tuners whose Levels sum to the Synchro monster\'s Level.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Xyz Summon</b> — {highlight('Stack N monsters of the same Level under an Xyz monster of matching Rank/material count.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Ritual Summon</b> — {highlight('Activate the matching Ritual Spell and Tribute monsters whose Levels equal or exceed the cost.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Link Summon</b> — {highlight('Send monsters equal to the Link Rating to Special Summon a Link monster to the Extra Monster Zone.')}</li>
+          </ul>
+        </div>
+      );
+    case 'battle':
+      return (
+        <div>
+          <p>{highlight('During the Battle Phase, each face-up Attack Position monster you control can attack once per turn. The first player cannot battle on their first turn.')}</p>
+          <BattleMatrix highlight={highlight} />
+          <ul style={{ marginLeft: 18, marginTop: 12 }}>
+            <li><b style={{ color: RULES_TOKENS.gold }}>ATK vs ATK</b> — {highlight('Lower ATK is destroyed. Its controller takes the difference as battle damage. Equal ATK destroys both.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>ATK vs face-up DEF</b> — {highlight('If ATK &gt; DEF the defender is destroyed (no damage). If ATK &lt; DEF the attacker\'s controller takes the difference. Equal does nothing.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Face-down attacked</b> — {highlight('Flip the target face-up first, then resolve. Flip effects trigger.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Direct attack</b> — {highlight('If the opponent has no monsters, your ATK is dealt directly to their LP.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Piercing</b> — {highlight('Some monsters deal the (ATK − DEF) difference to LP when overpowering a Defense Position target.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Battle position change</b> — {highlight('Once per turn (not the turn summoned, not after attacking). Click a face-up monster in Main Phase to switch position.')}</li>
+          </ul>
+        </div>
+      );
+    case 'spelltrap':
+      return (
+        <div>
+          <p>{highlight('Spells and Traps interrupt the flow of the game. They activate on a chain that resolves last-in / first-out. Higher Spell Speeds can chain on top of lower ones; only a Counter Trap (Speed 3) can chain on another Counter Trap.')}</p>
+          <SpellSpeedTable highlight={highlight} />
+          <ul style={{ marginLeft: 18, marginTop: 12 }}>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Normal Spell</b> — {highlight('Activate from your hand in Main Phase 1/2, resolve, then send to the Graveyard.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Continuous Spell</b> — {highlight('Activate on your Main Phase; stays face-up in the Spell/Trap Zone applying its effect.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Equip Spell</b> — {highlight('Targets a monster and boosts it. Destroyed if the equipped monster leaves the field.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Field Spell</b> — {highlight('Goes in the Field Zone. Each player can only have one; activating a new one sends the old to the GY.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Quick-Play Spell</b> — {highlight('Spell Speed 2. Activate from hand on your turn, or from a face-down Set on either player\'s turn (not the turn you Set it).')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Ritual Spell</b> — {highlight('Pairs with a specific Ritual Monster to perform a Ritual Summon.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Normal Trap</b> — {highlight('Must be Set face-down for at least one turn before it can be activated.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Continuous Trap</b> — {highlight('Stays face-up after activation with an ongoing effect.')}</li>
+            <li><b style={{ color: RULES_TOKENS.gold }}>Counter Trap</b> — {highlight('Spell Speed 3. Only used in response to another activation; usually negates and destroys.')}</li>
           </ul>
         </div>
       );
     case 'turn':
       return <TurnTimeline highlight={highlight} />;
-    case 'advanced':
-      return (
-        <div>
-          <ul style={{ marginLeft: 18 }}>
-            <li><b style={{ color: RULES_TOKENS.gold }}>Summoning sickness</b> — {highlight('Memes can\'t attack the turn they enter (unless they have haste).')}</li>
-            <li><b style={{ color: RULES_TOKENS.gold }}>Blocking</b> — {highlight('Defender chooses blockers from untapped Memes. Unblocked attackers hit life directly.')}</li>
-            <li><b style={{ color: RULES_TOKENS.gold }}>Simultaneous damage</b> — {highlight('Attacker and blocker deal Power to each other. Damage ≥ toughness destroys it.')}</li>
-            <li><b style={{ color: RULES_TOKENS.gold }}>Graveyard</b> — {highlight('Destroyed Memes, used Moves go here. Some cards interact with the graveyard.')}</li>
-            <li><b style={{ color: RULES_TOKENS.gold }}>Max hand 7</b> — {highlight('Discard down at end of turn.')}</li>
-          </ul>
-        </div>
-      );
     case 'example':
       return <ExampleTurn highlight={highlight} />;
     case 'cheatsheet':
       return (
         <div>
           <ul style={{ marginLeft: 18 }}>
-            <li>{highlight('Click an untapped Node → tap for Gas.')}</li>
-            <li>{highlight('Click a card in hand → play it (Moves then ask for a target).')}</li>
-            <li>{highlight('Click your own untapped Meme → mark attacker. Press "Attack with N".')}</li>
-            <li>{highlight('During declare blockers → click your Meme, then click the attacker to block.')}</li>
-            <li>{highlight('Press End Turn to pass.')}</li>
+            <li>{highlight('Click a card in your hand → action panel opens (Summon / Set / Activate).')}</li>
+            <li>{highlight('Click one of your face-up monsters → Change Position, or Attack in the Battle Phase.')}</li>
+            <li>{highlight('Click a face-down monster of yours in Main Phase → Flip Summon it.')}</li>
+            <li>{highlight('In Battle Phase, after picking an attacker, click an opponent monster (or hit Direct Attack).')}</li>
+            <li>{highlight('Use the phase bar to go Draw → Standby → Main 1 → Battle → Main 2 → End.')}</li>
+            <li>{highlight('When the opponent activates a Spell/Trap or attacks, a yellow "respond" banner appears — chain a Quick-Play / Trap, or hit Pass to resolve.')}</li>
           </ul>
         </div>
       );
@@ -1290,11 +1331,18 @@ function LifeOrb({ label, value, color }: { label: string; value: number; color:
 
 function CardTypesGrid({ highlight }: { highlight: (s: string) => React.ReactNode }) {
   const types = [
-    { name: 'NODE',    icon: '⛓️', color: RULES_TOKENS.gold,   short: 'Produces Gas',        details: 'Your "land". Free to play, but only 1 per turn. Tap on a later turn to add 1 Gas of its color to your pool.' },
-    { name: 'MEME',    icon: '🐸', color: RULES_TOKENS.purple, short: 'Creature Card',       details: 'Your fighters. Each has Power / Toughness. Attack to deal damage to the opponent. Summoning sick the turn they enter.' },
-    { name: 'MACHINE', icon: '⚙️', color: RULES_TOKENS.blue,   short: 'Permanent Effect',    details: 'Artifact / enchantment. Stays in play with an ongoing effect until destroyed.' },
-    { name: 'AURA',    icon: '🔮', color: RULES_TOKENS.purple, short: 'Enchant a Meme',      details: 'A spell that attaches to a single Meme. Buffs its stats or grants a keyword (haste, lifelink, etc). If the enchanted Meme dies or is bounced, the Aura is destroyed too.' },
-    { name: 'MOVE',    icon: '⚡', color: RULES_TOKENS.red,    short: 'Instant Action',      details: 'A one-shot spell. Resolves immediately, then goes to the graveyard.' },
+    {
+      name: 'MONSTER', icon: '🐉', color: RULES_TOKENS.gold, short: 'ATK / DEF · Level / Rank / Link',
+      details: 'The fighters. Each has an Attribute (LIGHT/DARK/EARTH/WATER/FIRE), a Race (Beast, Spellcaster, Cyberse, etc.), an ATK and (usually) DEF, and a Level. Subtypes: Normal, Effect, Fusion, Synchro, Xyz, Ritual, Link, Pendulum. Level 5+ require Tributes to Normal Summon.'
+    },
+    {
+      name: 'SPELL', icon: '📜', color: RULES_TOKENS.purple, short: '6 subtypes',
+      details: 'Cast from hand (or face-down) on your Main Phase. Normal · resolves once; Continuous · stays face-up; Equip · attaches to a monster; Field · sits in the Field Zone; Quick-Play · Spell Speed 2; Ritual · pairs with a Ritual Monster.'
+    },
+    {
+      name: 'TRAP', icon: '🪤', color: RULES_TOKENS.red, short: 'Set first, fire later',
+      details: 'Always Set face-down first; can\'t be activated the turn you Set them. Normal · single-use; Continuous · stays after activation; Counter · Spell Speed 3, used to negate other activations.'
+    },
   ];
   const [expanded, setExpanded] = useState<string | null>(null);
   return (
@@ -1339,7 +1387,7 @@ function CardTypesGrid({ highlight }: { highlight: (s: string) => React.ReactNod
   );
 }
 
-function GasFlowViz() {
+function TributeFlowViz() {
   return (
     <div style={{
       margin: '14px 0', padding: '18px 12px',
@@ -1347,26 +1395,82 @@ function GasFlowViz() {
       borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: 18, flexWrap: 'wrap',
     }}>
-      <FlowNode icon="⛓️" label="NODE" color={RULES_TOKENS.gold} />
+      <FlowNode icon="★1–4" label="NORMAL" color={RULES_TOKENS.gold} />
       <FlowArrow />
-      <div style={{
-        position: 'relative', padding: '10px 16px',
-        border: `1px solid ${RULES_TOKENS.purple}88`, borderRadius: 8,
-        background: 'rgba(138,43,226,0.18)',
-        fontFamily: RULES_HEAD, letterSpacing: 2, fontWeight: 800,
-        color: RULES_TOKENS.purple, fontSize: 14,
-        boxShadow: `0 0 18px ${RULES_TOKENS.purpleSoft}`,
-        overflow: 'hidden',
-      }}>
-        +1 GAS
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: `linear-gradient(180deg, transparent, ${RULES_TOKENS.purple}55, transparent)`,
-          animation: 'rulesEnergy 1.8s ease-in-out infinite', pointerEvents: 'none',
-        }} />
+      <FlowNode icon="★5–6" label="1 TRIBUTE" color={RULES_TOKENS.purple} />
+      <FlowArrow />
+      <FlowNode icon="★7+" label="2 TRIBUTES" color={RULES_TOKENS.red} />
+    </div>
+  );
+}
+
+function BattleMatrix({ highlight }: { highlight: (s: string) => React.ReactNode }) {
+  const rows: Array<{ left: string; mid: string; right: string; tone: string; note: string }> = [
+    { left: 'ATK > target ATK',  mid: '⚔', right: 'Target destroyed',         tone: RULES_TOKENS.green, note: 'Opponent takes (your ATK − their ATK).' },
+    { left: 'ATK = target ATK',  mid: '⚔', right: 'Both destroyed',           tone: RULES_TOKENS.gold,  note: 'No battle damage either side.' },
+    { left: 'ATK < target ATK',  mid: '⚔', right: 'Your monster destroyed',   tone: RULES_TOKENS.red,   note: 'You take (target ATK − your ATK).' },
+    { left: 'ATK > target DEF',  mid: '🛡', right: 'Target destroyed',        tone: RULES_TOKENS.green, note: 'No damage (unless you have Piercing).' },
+    { left: 'ATK = target DEF',  mid: '🛡', right: 'Nothing happens',         tone: RULES_TOKENS.gold,  note: 'Stalemate at the barricades.' },
+    { left: 'ATK < target DEF',  mid: '🛡', right: 'Nothing destroyed',       tone: RULES_TOKENS.red,   note: 'You take (target DEF − your ATK).' },
+    { left: 'No opp. monsters',  mid: '➡', right: 'Direct attack',            tone: RULES_TOKENS.purple,note: 'Full ATK comes off opponent LP.' },
+  ];
+  return (
+    <div style={{
+      margin: '14px 0', padding: 10,
+      background: 'rgba(255,255,255,0.03)', borderRadius: 12,
+      border: `1px solid ${RULES_TOKENS.borderSoft}`,
+    }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {rows.map((r, i) => (
+          <div key={i} style={{
+            display: 'grid', gridTemplateColumns: '1fr 30px 1fr', gap: 10, alignItems: 'center',
+            padding: '6px 10px', borderRadius: 8,
+            background: `linear-gradient(90deg, ${r.tone}10, transparent)`,
+            borderLeft: `3px solid ${r.tone}aa`,
+          }}>
+            <div style={{ fontSize: 12, color: RULES_TOKENS.text }}>{highlight(r.left)}</div>
+            <div style={{ textAlign: 'center', fontSize: 16 }}>{r.mid}</div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: r.tone }}>{r.right}</div>
+              <div style={{ fontSize: 11, color: RULES_TOKENS.mute }}>{r.note}</div>
+            </div>
+          </div>
+        ))}
       </div>
-      <FlowArrow />
-      <FlowNode icon="🐸" label="CAST MEME" color={RULES_TOKENS.purple} />
+    </div>
+  );
+}
+
+function SpellSpeedTable({ highlight }: { highlight: (s: string) => React.ReactNode }) {
+  const rows = [
+    { speed: 1, color: RULES_TOKENS.blue,   what: 'Normal / Continuous / Equip / Field / Ritual Spells · Monster ignition/trigger/flip effects', note: 'Slowest. Can\'t be chained on top of any other activation.' },
+    { speed: 2, color: RULES_TOKENS.gold,   what: 'Quick-Play Spells · Normal / Continuous Traps · Monster Quick Effects',                       note: 'Can chain on top of Speed 1 or 2 activations.' },
+    { speed: 3, color: RULES_TOKENS.red,    what: 'Counter Traps',                                                                               note: 'Highest. Only another Speed 3 can respond.' },
+  ];
+  return (
+    <div style={{
+      margin: '14px 0', padding: 10,
+      background: 'rgba(255,255,255,0.03)', borderRadius: 12,
+      border: `1px solid ${RULES_TOKENS.borderSoft}`,
+      display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+      {rows.map(r => (
+        <div key={r.speed} style={{
+          display: 'grid', gridTemplateColumns: '64px 1fr', gap: 12, alignItems: 'center',
+          padding: '8px 10px', borderRadius: 8,
+          background: `linear-gradient(90deg, ${r.color}14, transparent)`,
+          borderLeft: `3px solid ${r.color}aa`,
+        }}>
+          <div style={{
+            textAlign: 'center', fontFamily: RULES_HEAD, fontSize: 22, fontWeight: 900,
+            color: r.color, textShadow: `0 0 12px ${r.color}66`,
+          }}>SS{r.speed}</div>
+          <div>
+            <div style={{ fontSize: 12, color: '#fff' }}>{highlight(r.what)}</div>
+            <div style={{ fontSize: 11, color: RULES_TOKENS.mute, marginTop: 2 }}>{r.note}</div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1399,13 +1503,14 @@ function FlowArrow() {
 
 function TurnTimeline({ highlight }: { highlight: (s: string) => React.ReactNode }) {
   const phases = [
-    { id: 'untap',  name: 'UNTAP',  icon: '🔄', color: RULES_TOKENS.blue,   desc: 'Untap your Nodes, Memes, and Machines. Summoning sickness wears off.' },
-    { id: 'draw',   name: 'DRAW',   icon: '🃏', color: RULES_TOKENS.green,  desc: 'Draw 1 card (skipped on the very first turn of the game).' },
-    { id: 'main',   name: 'MAIN',   icon: '⚙️', color: RULES_TOKENS.gold,   desc: 'Play 1 Node, tap for Gas, cast Memes, Machines, and Moves in any order.' },
-    { id: 'combat', name: 'COMBAT', icon: '⚔️', color: RULES_TOKENS.red,    desc: 'Click Memes to attack. Opponent blocks. Damage resolves simultaneously.' },
-    { id: 'end',    name: 'END',    icon: '🌙', color: RULES_TOKENS.purple, desc: 'Unspent Gas evaporates. Discard down to 7 cards.' },
+    { id: 'draw',    name: 'DRAW',    icon: '🃏', color: RULES_TOKENS.green,  desc: 'Draw 1 card from the top of your Deck (skipped on the very first turn of the duel for the player who goes first).' },
+    { id: 'standby', name: 'STANDBY', icon: '🌅', color: RULES_TOKENS.blue,   desc: 'Resolve any effects that say "during the Standby Phase". Continuous spells with standby triggers also activate here.' },
+    { id: 'main1',   name: 'MAIN 1',  icon: '⚙️', color: RULES_TOKENS.gold,   desc: 'Normal Summon or Set once. Special Summon as many times as you can pay for. Activate or Set Spells/Traps. Change battle positions.' },
+    { id: 'battle',  name: 'BATTLE',  icon: '⚔️', color: RULES_TOKENS.red,    desc: 'Pick attackers and targets one at a time. The first player can\'t conduct a Battle Phase on their first turn.' },
+    { id: 'main2',   name: 'MAIN 2',  icon: '🛠️', color: RULES_TOKENS.gold,   desc: 'Same actions as Main 1, but anything once-per-turn you used in Main 1 (e.g. Normal Summon) is unavailable.' },
+    { id: 'end',     name: 'END',     icon: '🌙', color: RULES_TOKENS.purple, desc: 'Resolve "during End Phase" effects, then discard down to 6 cards in hand.' },
   ];
-  const [active, setActive] = useState<string>('untap');
+  const [active, setActive] = useState<string>('draw');
   const cur = phases.find(p => p.id === active)!;
   return (
     <div>
@@ -1460,10 +1565,13 @@ function TurnTimeline({ highlight }: { highlight: (s: string) => React.ReactNode
 
 function ExampleTurn({ highlight }: { highlight: (s: string) => React.ReactNode }) {
   const steps = [
-    { t: 'Play Purple Node',         d: 'You start your turn. You spend your free Node drop and play a Solana Node onto the battlefield.' },
-    { t: 'Tap Node for 1 Purple Gas',d: 'Click your untapped Node. It rotates and adds 1 Purple Gas to your pool.' },
-    { t: 'Cast a Meme',              d: 'You spend 1 Purple Gas to cast a cheap Meme like Pepe Warrior. It enters summoning sick — it can\'t attack this turn.' },
-    { t: 'End Turn',                 d: 'No combat this turn. Unspent Gas evaporates, and you pass to the opponent.' },
+    { t: 'Opening hand (Player 1)',  d: 'You go first with 5 cards in hand: 2 Level 4 monsters, 1 Continuous Spell, 1 Trap, and 1 Quick-Play Spell.' },
+    { t: 'Draw Phase — skipped',     d: 'Because you went first, you do not draw on turn 1.' },
+    { t: 'Standby Phase',            d: 'No standby effects to resolve. Move on to Main Phase 1.' },
+    { t: 'Main Phase 1',             d: 'Normal Summon a Level 4 monster in face-up Attack Position (uses your once-per-turn Normal Summon). Activate the Continuous Spell to give your monster +300 ATK. Set the Trap face-down.' },
+    { t: 'Battle Phase — skipped',   d: 'The first player can\'t conduct a Battle Phase on turn 1, so you skip straight to Main 2.' },
+    { t: 'Main Phase 2',             d: 'Set the Quick-Play Spell face-down so you can activate it on your opponent\'s turn (or your own next turn). End the turn.' },
+    { t: 'End Phase',                d: 'Your hand is now at 5 cards (≤6), so no discard. Pass to the opponent — they draw and start their own turn.' },
   ];
   const [i, setI] = useState(0);
   const s = steps[i];
@@ -1520,59 +1628,106 @@ function Landing({
 }: { myName: string; onPlay: () => void; onMasterquest: () => void; onBoosters: () => void; onProfile: () => void; onRules: () => void; onLogout: () => void }) {
   const mobile = useIsMobile();
   return (
-    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#000', color: '#fff', fontFamily: 'system-ui' }}>
+    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#0a0518', color: '#fff', fontFamily: 'system-ui' }}>
       <img
-        src="/intro.png"
+        src="/home-bg.png"
         alt=""
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0, imageRendering: 'pixelated' }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }}
       />
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.1) 55%, rgba(0,0,0,0.75) 100%)', zIndex: 1 }} />
-
-      {/* PixelTrail removed from Landing — its r3f Canvas was painting opaque
-          over the intro art ~1s after mount (right when the lazy chunk
-          resolved). Component file kept in src/PixelTrail.tsx for re-use
-          on another page later. */}
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.0) 55%, rgba(0,0,0,0.55) 100%)', zIndex: 1 }} />
 
       {/* Top bar */}
       <div style={{
         position: 'relative', zIndex: 2,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
         padding: mobile ? '10px 12px' : '14px 22px',
         gap: 8, flexWrap: 'wrap',
       }}>
-        <div style={{ fontWeight: 800, fontSize: mobile ? 13 : 16, letterSpacing: 1.5, textShadow: '0 2px 8px #000' }}>
-          <ShinyBrand text="MEMETIC MASTERS TCG" />
-        </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#ddd', textShadow: '0 1px 4px #000' }}>Signed in as <b>{myName}</b></span>
+          <span style={{
+            fontSize: 12, color: '#fff', fontWeight: 600,
+            background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: 6, padding: '4px 10px', textShadow: '0 1px 4px #000',
+          }}>Signed in as <b>{myName}</b></span>
           <button onClick={onLogout} style={ghostBtn}>Sign out</button>
         </div>
       </div>
 
-      {/* Action menu */}
+      {/* Action menu — centered along the bottom over the dark band in the art */}
       <div style={{
         position: 'absolute',
-        left: mobile ? '50%' : '8vw',
-        transform: mobile ? 'translateX(-50%)' : undefined,
-        right: mobile ? undefined : undefined,
-        bottom: mobile ? '6vh' : '10vh',
+        left: 0, right: 0,
+        bottom: mobile ? '8vh' : '6vh',
         zIndex: 2,
-        display: 'flex', flexDirection: 'column', gap: 10,
-        width: mobile ? 'calc(100vw - 24px)' : undefined,
-        minWidth: mobile ? undefined : 220,
-        maxWidth: mobile ? 360 : undefined,
+        display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center',
+        padding: '0 16px',
       }}>
-        <MenuBtn primary onClick={onPlay}>▶  PLAY · RANKED</MenuBtn>
-        <MenuBtn onClick={onMasterquest}>🗺  MASTERQUEST</MenuBtn>
-        <MenuBtn onClick={onBoosters}>📦  BOOSTERS</MenuBtn>
-        <MenuBtn onClick={onProfile}>👤  PROFILE</MenuBtn>
-        <MenuBtn onClick={onRules}>📖  RULES</MenuBtn>
-        <MenuBtn onClick={() => window.open('https://x.com/MemeticMasters', '_blank', 'noopener')}>📰  NEWS</MenuBtn>
+        <div style={{
+          display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center',
+          maxWidth: 900,
+        }}>
+          <HomeMenuBtn primary icon="⚔" title="DUEL" subtitle="Enter the Arena" onClick={onPlay} />
+          <HomeMenuBtn icon="🃏" title="DECKS" subtitle="Build your strategy" onClick={onProfile} />
+          <HomeMenuBtn icon="👑" title="EVENTS" subtitle="Limited-time events" onClick={onMasterquest} />
+        </div>
+        <div style={{
+          display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center', marginTop: 4,
+        }}>
+          <HomeMenuBtn small icon="📦" title="BOOSTERS" onClick={onBoosters} />
+          <HomeMenuBtn small icon="📖" title="RULES" onClick={onRules} />
+          <HomeMenuBtn small icon="📰" title="NEWS" onClick={() => window.open('https://x.com/MemeticMasters', '_blank', 'noopener')} />
+        </div>
       </div>
 
-      {/* $MASTER contract address footer */}
       <ContractAddressFooter />
     </div>
+  );
+}
+
+function HomeMenuBtn({
+  icon, title, subtitle, onClick, primary = false, small = false,
+}: {
+  icon: string;
+  title: string;
+  subtitle?: string;
+  onClick: () => void;
+  primary?: boolean;
+  small?: boolean;
+}) {
+  return (
+    <button onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: small ? '8px 14px' : '10px 18px',
+        background: primary
+          ? 'linear-gradient(180deg, #1a1530 0%, #0a0518 100%)'
+          : 'linear-gradient(180deg, #15152a 0%, #0a0a1a 100%)',
+        color: '#fff',
+        border: `1px solid ${primary ? '#d4af37' : '#6c5b8c'}`,
+        borderRadius: 8,
+        boxShadow: primary
+          ? '0 0 16px rgba(212,175,55,0.4), inset 0 1px 0 rgba(255,255,255,0.1)'
+          : '0 4px 14px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)',
+        cursor: 'pointer',
+        fontFamily: 'system-ui, sans-serif',
+        minWidth: small ? 130 : 200,
+      }}>
+      <div style={{
+        width: small ? 24 : 32, height: small ? 24 : 32, borderRadius: 4,
+        background: 'rgba(212,175,55,0.18)', border: '1px solid rgba(212,175,55,0.6)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: small ? 14 : 18,
+      }}>{icon}</div>
+      <div style={{ textAlign: 'left' }}>
+        <div style={{
+          fontWeight: 800, fontSize: small ? 13 : 17, letterSpacing: 2,
+          color: '#fff', textShadow: '0 1px 4px #000',
+        }}>{title}</div>
+        {subtitle && (
+          <div style={{ fontSize: 10, color: '#c4b8d4', letterSpacing: 0.5 }}>{subtitle}</div>
+        )}
+      </div>
+    </button>
   );
 }
 
@@ -1595,7 +1750,7 @@ function ContractAddressFooter() {
       flexWrap: 'wrap',
     }}>
       <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: '#ffb347', textShadow: '0 1px 4px #000' }}>
-        $MASTER CA:
+        $DUEL CA:
       </span>
       <button
         onClick={copy}
@@ -1667,6 +1822,7 @@ function ProfilePage({ myName, onBack }: { myName: string; onBack: () => void })
   const [deck, setDeck] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [tab, setTab] = useState<'overview' | 'achievements' | 'collection' | 'decks'>('overview');
 
   const reload = useCallback(async () => {
     let p = await getProfileApi(myName);
@@ -1698,18 +1854,20 @@ function ProfilePage({ myName, onBack }: { myName: string; onBack: () => void })
   const xpPct  = Math.max(0, Math.min(100, Math.round(((xpCur - xpPrev) / Math.max(1, xpNext - xpPrev)) * 100)));
 
   const achievements = useMemo(() => computeAchievements({ prof, deck, ranked }), [prof, deck, ranked]);
+  const achievementsDone = achievements.filter(a => a.earned).length;
+
+  const TABS: Array<{ id: typeof tab; label: string; icon: string; count?: number }> = [
+    { id: 'overview',     label: 'Overview',     icon: '📊' },
+    { id: 'achievements', label: 'Achievements', icon: '🏅', count: achievementsDone },
+    { id: 'collection',   label: 'Collection',   icon: '🃏' },
+    { id: 'decks',        label: 'Deck Builder', icon: '⚒️' },
+  ];
 
   return (
     <div style={{ fontFamily: PROFILE_FONT, background: PROFILE_TOKENS.bg, minHeight: '100vh', color: '#e9eef7', position: 'relative' }}>
-      {/* Iridescent gold-purple shimmer background. Fixed full-bleed, z=0,
-          pointer-events: none, dimmed via opacity so the page UI on top
-          stays readable. Tint biases R+B high, G mid so the rainbow shader
-          biases toward gold highlights and purple shadows. */}
       <div style={{
         position: 'fixed', inset: 0, zIndex: 0,
-        pointerEvents: 'none',
-        opacity: 0.32,
-        mixBlendMode: 'screen',
+        pointerEvents: 'none', opacity: 0.32, mixBlendMode: 'screen',
       }}>
         <Iridescence
           color={[1.0, 0.62, 0.95]}
@@ -1722,59 +1880,277 @@ function ProfilePage({ myName, onBack }: { myName: string; onBack: () => void })
       <div style={{ position: 'relative', zIndex: 1 }}>
         <ProfileTopBar onBack={onBack} onEdit={() => setEditing(true)} />
 
-      {loading ? (
-        <ProfileSkeleton />
-      ) : (
-        <div style={{ maxWidth: 1180, margin: '0 auto', padding: mobile ? '16px 14px 60px' : '24px 28px 80px', display: 'flex', flexDirection: 'column', gap: 22 }}>
-          <ProfileHero
-            name={prof?.name ?? myName}
-            avatarUrl={prof?.avatarUrl ?? null}
-            bio={prof?.bio ?? null}
-            rankLabel={ranked ? formatRankLabel(ranked) : 'Unranked'}
-            rankGlow={ranked ? rankGlow(ranked.visibleRank) : '#7c5cff'}
-            level={level}
-            xpPct={xpPct}
-            xpCur={xpCur - xpPrev}
-            xpRange={xpNext - xpPrev}
-            winPct={winPct}
-            wins={prof?.wins ?? 0}
-            losses={prof?.losses ?? 0}
-            placement={ranked?.placementMatchesRemaining ?? 0}
+        {loading ? (
+          <ProfileSkeleton />
+        ) : (
+          <div style={{
+            maxWidth: 1280, margin: '0 auto',
+            padding: mobile ? '14px 12px 60px' : '20px 24px 80px',
+            display: 'grid',
+            gap: mobile ? 16 : 22,
+            gridTemplateColumns: mobile ? '1fr' : 'minmax(280px, 340px) 1fr',
+            alignItems: 'start',
+          }}>
+            {/* ── Left rail: compact identity card (sticky on desktop) ─── */}
+            <div style={{
+              position: mobile ? 'static' : 'sticky',
+              top: mobile ? undefined : 76,
+              display: 'flex', flexDirection: 'column', gap: 14,
+            }}>
+              <ProfileIdentityCard
+                name={prof?.name ?? myName}
+                avatarUrl={prof?.avatarUrl ?? null}
+                bio={prof?.bio ?? null}
+                rankLabel={ranked ? formatRankLabel(ranked) : 'Unranked'}
+                rankGlow={ranked ? rankGlow(ranked.visibleRank) : '#7c5cff'}
+                level={level}
+                xpPct={xpPct}
+                xpCur={xpCur - xpPrev}
+                xpRange={xpNext - xpPrev}
+                wins={prof?.wins ?? 0}
+                losses={prof?.losses ?? 0}
+                draws={prof?.draws ?? 0}
+                winPct={winPct}
+                favorite={deriveFavoriteFaction(deck)}
+                onEdit={() => setEditing(true)}
+              />
+              <div style={{
+                padding: 12, borderRadius: 12,
+                background: PROFILE_TOKENS.cardSoft,
+                border: `1px solid ${PROFILE_TOKENS.border}`,
+                fontSize: 11, color: PROFILE_TOKENS.muted, lineHeight: 1.55,
+              }}>
+                <div style={{ color: '#fff', fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>WELCOME, DUELIST</div>
+                Manage your record, achievements, on-chain collection, and decks from one place.
+              </div>
+            </div>
+
+            {/* ── Right pane: tabbed content ────────────────────────────── */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+              <ProfileTabBar tabs={TABS} active={tab} onChange={setTab} />
+              <div style={{
+                background: PROFILE_TOKENS.card, borderRadius: 14,
+                border: `1px solid ${PROFILE_TOKENS.border}`,
+                padding: mobile ? 14 : 20,
+                minHeight: 400,
+              }}>
+                {tab === 'overview' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                    <PlayerStats
+                      wins={prof?.wins ?? 0}
+                      losses={prof?.losses ?? 0}
+                      draws={prof?.draws ?? 0}
+                      winPct={winPct}
+                      currentStreak={0}
+                      bestStreak={Math.max(1, Math.round((prof?.wins ?? 0) / 3))}
+                      favoriteFaction={deriveFavoriteFaction(deck)}
+                    />
+                    <FavoriteDeck deck={deck} myName={myName} />
+                  </div>
+                )}
+                {tab === 'achievements' && (
+                  <AchievementGrid achievements={achievements} />
+                )}
+                {tab === 'collection' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                    <SprotoGremlinShowcase walletAddress={prof?.walletAddress ?? null} />
+                    <LibrarySection prof={prof} />
+                  </div>
+                )}
+                {tab === 'decks' && (
+                  <DeckbuilderPanel myName={myName} walletAddress={prof?.walletAddress ?? null} />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {editing && prof && (
+          <ProfileEditModal
+            prof={prof}
+            onClose={() => setEditing(false)}
+            onSaved={async () => { await reload(); setEditing(false); }}
           />
+        )}
+      </div>
+    </div>
+  );
+}
 
-          <PlayerStats
-            wins={prof?.wins ?? 0}
-            losses={prof?.losses ?? 0}
-            draws={prof?.draws ?? 0}
-            winPct={winPct}
-            currentStreak={0}
-            bestStreak={Math.max(1, Math.round((prof?.wins ?? 0) / 3))}
-            favoriteFaction={deriveFavoriteFaction(deck)}
-          />
+// ── Tab bar ────────────────────────────────────────────────────────────────
+function ProfileTabBar<T extends string>({
+  tabs, active, onChange,
+}: {
+  tabs: Array<{ id: T; label: string; icon: string; count?: number }>;
+  active: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div style={{
+      display: 'flex', gap: 4, padding: 4,
+      background: PROFILE_TOKENS.cardSoft,
+      border: `1px solid ${PROFILE_TOKENS.border}`,
+      borderRadius: 12, overflowX: 'auto',
+    }}>
+      {tabs.map(t => {
+        const isActive = active === t.id;
+        return (
+          <button key={t.id} onClick={() => onChange(t.id)}
+            style={{
+              flex: '1 0 auto',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '10px 14px',
+              border: 'none', borderRadius: 8,
+              background: isActive ? `linear-gradient(180deg, ${PROFILE_TOKENS.secondary}26, ${PROFILE_TOKENS.secondary}08)` : 'transparent',
+              boxShadow: isActive ? `inset 0 0 0 1px ${PROFILE_TOKENS.secondary}55` : 'none',
+              color: isActive ? '#fff' : PROFILE_TOKENS.muted,
+              fontSize: 13, fontWeight: 700, letterSpacing: 1,
+              cursor: 'pointer', whiteSpace: 'nowrap',
+              fontFamily: 'inherit',
+            }}>
+            <span style={{ fontSize: 15 }}>{t.icon}</span>
+            <span>{t.label}</span>
+            {typeof t.count === 'number' && (
+              <span style={{
+                fontSize: 10, padding: '2px 6px', borderRadius: 999,
+                background: isActive ? PROFILE_TOKENS.secondary : PROFILE_TOKENS.border,
+                color: '#fff', fontWeight: 800,
+              }}>{t.count}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
-          <AchievementGrid achievements={achievements} />
+// ── Compact identity card (replaces the wide ProfileHero) ──────────────────
+function ProfileIdentityCard({
+  name, avatarUrl, bio, rankLabel, rankGlow, level, xpPct, xpCur, xpRange,
+  wins, losses, draws, winPct, favorite, onEdit,
+}: {
+  name: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  rankLabel: string;
+  rankGlow: string;
+  level: number;
+  xpPct: number;
+  xpCur: number;
+  xpRange: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  winPct: number;
+  favorite: { name: string; color: string; ink: string; count: number } | null;
+  onEdit: () => void;
+}) {
+  return (
+    <div style={{
+      background: PROFILE_TOKENS.card,
+      border: `1px solid ${PROFILE_TOKENS.border}`,
+      borderRadius: 14,
+      padding: 18,
+      display: 'flex', flexDirection: 'column', gap: 14,
+      position: 'relative', overflow: 'hidden',
+    }}>
+      <div aria-hidden style={{
+        position: 'absolute', inset: 0,
+        background: `radial-gradient(circle at 50% 0%, ${rankGlow}22, transparent 60%)`,
+        pointerEvents: 'none',
+      }} />
 
-          <FavoriteDeck deck={deck} myName={myName} />
+      {/* Avatar + name */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, position: 'relative' }}>
+        <div style={{
+          width: 96, height: 96, borderRadius: '50%', overflow: 'hidden',
+          background: '#181820',
+          border: `2px solid ${rankGlow}`,
+          boxShadow: `0 0 24px ${rankGlow}55`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {avatarUrl
+            ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <div style={{ fontSize: 44, color: '#444' }}>👤</div>}
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: 0.5 }}>{name}</div>
+          <div style={{
+            display: 'inline-block', marginTop: 4,
+            padding: '3px 10px', borderRadius: 999,
+            background: `${rankGlow}1f`, color: rankGlow,
+            fontSize: 11, fontWeight: 700, letterSpacing: 1.5,
+            border: `1px solid ${rankGlow}55`,
+          }}>{rankLabel}</div>
+        </div>
+        {bio && (
+          <div style={{ fontSize: 12, color: PROFILE_TOKENS.muted, textAlign: 'center', maxWidth: 240, lineHeight: 1.5 }}>
+            {bio}
+          </div>
+        )}
+      </div>
 
-          <SectionShell title="Collection" eyebrow="NFT Showcase" accent={PROFILE_TOKENS.accent}>
-            <SprotoGremlinShowcase walletAddress={prof?.walletAddress ?? null} />
-            <LibrarySection prof={prof} />
-          </SectionShell>
+      {/* Level + XP */}
+      <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: PROFILE_TOKENS.muted, marginBottom: 4 }}>
+          <span style={{ color: '#fff', fontWeight: 700 }}>LEVEL {level}</span>
+          <span>{xpCur} / {xpRange} XP</span>
+        </div>
+        <div style={{
+          height: 6, borderRadius: 999, background: PROFILE_TOKENS.cardSoft,
+          overflow: 'hidden', border: `1px solid ${PROFILE_TOKENS.border}`,
+        }}>
+          <div style={{
+            width: `${xpPct}%`, height: '100%',
+            background: `linear-gradient(90deg, ${PROFILE_TOKENS.secondary}, ${rankGlow})`,
+            transition: 'width 400ms ease',
+          }} />
+        </div>
+      </div>
 
-          <SectionShell title="Deck Builder" eyebrow="Forge Your 60-Card Deck" accent={PROFILE_TOKENS.secondary}>
-            <DeckbuilderPanel myName={myName} />
-          </SectionShell>
+      {/* Quick stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, position: 'relative' }}>
+        <MiniStat label="W" value={wins} color={PROFILE_TOKENS.accent} />
+        <MiniStat label="L" value={losses} color={PROFILE_TOKENS.danger} />
+        <MiniStat label="D" value={draws} color={PROFILE_TOKENS.warning} />
+        <MiniStat label="%" value={`${winPct}`} color={PROFILE_TOKENS.secondary} />
+      </div>
+
+      {favorite && (
+        <div style={{
+          padding: '8px 10px', borderRadius: 10,
+          background: PROFILE_TOKENS.cardSoft, border: `1px solid ${PROFILE_TOKENS.border}`,
+          display: 'flex', alignItems: 'center', gap: 10, position: 'relative',
+        }}>
+          <span style={{
+            width: 26, height: 26, borderRadius: 6,
+            background: favorite.color, color: favorite.ink,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 800,
+          }}>{favorite.name.slice(0, 3).toUpperCase()}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 10, color: PROFILE_TOKENS.muted, letterSpacing: 1, textTransform: 'uppercase' }}>Favorite chain</div>
+            <div style={{ fontSize: 13, color: '#fff', fontWeight: 700 }}>{favorite.name}</div>
+          </div>
         </div>
       )}
 
-      {editing && prof && (
-        <ProfileEditModal
-          prof={prof}
-          onClose={() => setEditing(false)}
-          onSaved={async () => { await reload(); setEditing(false); }}
-        />
-      )}
-      </div>
+      <button onClick={onEdit} style={{
+        ...profileChip(true), width: '100%', textAlign: 'center', position: 'relative',
+      }}>Edit profile</button>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, color }: { label: string; value: number | string; color: string }) {
+  return (
+    <div style={{
+      padding: '8px 4px', borderRadius: 8,
+      background: PROFILE_TOKENS.cardSoft, border: `1px solid ${PROFILE_TOKENS.border}`,
+      textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 16, fontWeight: 800, color }}>{value}</div>
+      <div style={{ fontSize: 9, color: PROFILE_TOKENS.muted, letterSpacing: 1.5, fontWeight: 700 }}>{label}</div>
     </div>
   );
 }
@@ -2692,14 +3068,15 @@ function LibraryCardTile({ card }: { card: LibraryCard }) {
 }
 
 // ── Deckbuilder ─────────────────────────────────────────────────────────────
-function DeckbuilderPanel({ myName }: { myName: string }) {
+function DeckbuilderPanel({ myName, walletAddress }: { myName: string; walletAddress: string | null }) {
   const mobile = useIsMobile();
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
   const [filter, setFilter] = useState<Color | 'all'>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'node' | 'meme' | 'machine' | 'aura' | 'move'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'monster' | 'spell' | 'trap'>('all');
+  const owned = useOwnedCards(walletAddress);
 
   // ── Deck Library state ─────────────────────────────────────────────────────
   const [decks, setDecks] = useState<DeckEntry[]>([]);
@@ -2754,7 +3131,9 @@ function DeckbuilderPanel({ myName }: { myName: string }) {
       const cur = prev[id] ?? 0;
       let next = cur + delta;
       if (next < 0) next = 0;
-      if (!isBasicNode(id) && next > MAX_COPIES_NONBASIC) next = MAX_COPIES_NONBASIC;
+      const ownedMax = owned.counts[id] ?? 0;
+      const hardCap = isBasicNode(id) ? Infinity : Math.min(MAX_COPIES_NONBASIC, ownedMax);
+      if (next > hardCap) next = hardCap;
       if (delta > 0 && total >= DECK_SIZE) return prev;
       const out = { ...prev };
       if (next === 0) delete out[id]; else out[id] = next;
@@ -2860,10 +3239,13 @@ function DeckbuilderPanel({ myName }: { myName: string }) {
 
   const visible = useMemo(() => {
     return BUILDABLE_CARDS.filter(c =>
+      (owned.counts[c.id] ?? 0) > 0 &&
       (filter === 'all' || c.color === filter) &&
       (typeFilter === 'all' || c.type === typeFilter)
     );
-  }, [filter, typeFilter]);
+  }, [filter, typeFilter, owned.counts]);
+
+  const totalOwned = useMemo(() => Object.values(owned.counts).reduce((s, n) => s + n, 0), [owned.counts]);
 
   return (
     <div>
@@ -2983,7 +3365,7 @@ function DeckbuilderPanel({ myName }: { myName: string }) {
         ))}
       </div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {(['all', 'node', 'meme', 'machine', 'aura', 'move'] as const).map(t => (
+        {(['all', 'monster', 'spell', 'trap'] as const).map(t => (
           <FilterChip key={t} selected={typeFilter === t}
             onClick={() => setTypeFilter(t)}
             label={t === 'all' ? 'All Types' : t.charAt(0).toUpperCase() + t.slice(1)} />
@@ -3165,7 +3547,7 @@ function Lobby({
   const [joinTarget, setJoinTarget] = useState<{ match: any; seat: string } | null>(null);
   const [plazaOpen, setPlazaOpen] = useState(false);
   const [joinColor, setJoinColor] = useState<Color>('eth');
-  // Match stakes — 'free' or a $MASTER token wager. Currently UI-only metadata stored in setupData.
+  // Match stakes — 'free' or a $DUEL token wager. Currently UI-only metadata stored in setupData.
   const [wagerKind, setWagerKind] = useState<'free' | 'master'>('free');
   const [wagerAmount, setWagerAmount] = useState<string>('1000');
   // Optional human-readable match name so opponents can find each other in the lobby.
@@ -3274,10 +3656,10 @@ function Lobby({
       }
       let wager = parseWager(wagerKind, wagerAmount);
       if (wagerKind === 'master' && !wager) {
-        setError('Enter a valid $MASTER wager amount greater than 0.');
+        setError('Enter a valid $DUEL wager amount greater than 0.');
         return;
       }
-      // For $MASTER wagers, deposit into the server-held custodial escrow
+      // For $DUEL wagers, deposit into the server-held custodial escrow
       // BEFORE creating the BG.io match so we never have a "ghost" wagered
       // match the creator didn't actually back. Phantom prompts for the
       // SPL-token transfer signature.
@@ -3338,7 +3720,7 @@ function Lobby({
 
       let wager = parseWager(wagerKind, wagerAmount);
       if (wagerKind === 'master' && !wager) {
-        setError('Enter a valid $MASTER wager amount greater than 0.');
+        setError('Enter a valid $DUEL wager amount greater than 0.');
         return;
       }
       if (wager && wager.kind === 'master') {
@@ -3443,8 +3825,8 @@ function Lobby({
     const w = readWager(m.setupData);
     if (w.kind === 'master') {
       const ok = window.confirm(
-        `This is a WAGERED match.\n\nStakes: ${w.amount} $MASTER — winner takes 90% of the pot (10% burned).\n\n` +
-        `By continuing you will be prompted by Phantom to deposit ${w.amount} $MASTER into escrow. Continue?`
+        `This is a WAGERED match.\n\nStakes: ${w.amount} $DUEL — winner takes 90% of the pot (10% burned).\n\n` +
+        `By continuing you will be prompted by Phantom to deposit ${w.amount} $DUEL into escrow. Continue?`
       );
       if (!ok) return;
     }
@@ -3470,7 +3852,7 @@ function Lobby({
         return;
       }
       await upsertProfileApi(myName);
-      // For $MASTER wagers, deposit BEFORE joining the BG.io match so we
+      // For $DUEL wagers, deposit BEFORE joining the BG.io match so we
       // never "join" a match we haven't actually backed.
       const w = readWager(m.setupData);
       if (w.kind === 'master') {
@@ -3547,13 +3929,13 @@ function Lobby({
     <div style={{
       position: 'relative', minHeight: '100vh', color: '#e9eef7',
       fontFamily: PROFILE_FONT,
-      backgroundImage: 'url(/lobby-bg.png?v=2)',
+      backgroundImage: 'url(/lobby-bg.png?v=3)',
       backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed',
     }}>
-      {/* Dark overlay so the UI floats above the scene */}
+      {/* Soft overlay so UI panels stay readable but the floating-castle scene reads through */}
       <div aria-hidden style={{
         position: 'fixed', inset: 0, zIndex: 0,
-        background: 'linear-gradient(180deg, rgba(7,9,15,0.78) 0%, rgba(7,9,15,0.55) 50%, rgba(7,9,15,0.88) 100%)',
+        background: 'linear-gradient(180deg, rgba(7,9,15,0.55) 0%, rgba(7,9,15,0.32) 50%, rgba(7,9,15,0.72) 100%)',
         pointerEvents: 'none',
       }} />
       {/* All content lives above the overlay */}
@@ -3629,50 +4011,65 @@ function Lobby({
         <div style={{
           flex: 1, width: '100%', maxWidth: 1480, margin: '0 auto',
           padding: mobile ? '14px' : '22px 22px 100px',
-          display: 'grid', gap: mobile ? 14 : 18,
-          gridTemplateColumns: mobile ? '1fr' : 'minmax(280px, 340px) minmax(0, 1fr) minmax(280px, 340px)',
+          display: 'flex', flexDirection: 'column', gap: mobile ? 14 : 18,
         }}>
-          <OpenMatchesPanel
-            matches={openMatches} loading={loading}
-            onRefresh={refresh} onJoin={openJoin}
+          {/* HERO ROW — ranked matchmaking is the primary play action,
+              promoted out of the middle column and given a full-width hero strip. */}
+          <RankedQueuePanel
+            wide
+            myName={myName}
+            decks={myDecks}
+            selectedDeckId={mySelectedDeckId}
+            setSelectedDeckId={setMySelectedDeckId}
+            selectedDeckCards={myDeck}
+            deckOk={myDeckOk}
+            onJoined={onJoined}
+            setError={setError}
           />
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-            <RankedQueuePanel
-              myName={myName}
-              decks={myDecks}
-              selectedDeckId={mySelectedDeckId}
-              setSelectedDeckId={setMySelectedDeckId}
-              selectedDeckCards={myDeck}
-              deckOk={myDeckOk}
-              onJoined={onJoined}
-              setError={setError}
+          {/* CONTENT GRID — 2 columns:
+                LEFT  = discover (open matches, browsable)
+                RIGHT = act (create / challenge / community) */}
+          <div style={{
+            display: 'grid', gap: mobile ? 14 : 18, minWidth: 0,
+            gridTemplateColumns: mobile
+              ? '1fr'
+              : 'minmax(0, 1.6fr) minmax(320px, 0.9fr)',
+            alignItems: 'start',
+          }}>
+            {/* LEFT — discoverable matches (gets the lion's share of width) */}
+            <OpenMatchesPanel
+              matches={openMatches} loading={loading}
+              onRefresh={refresh} onJoin={openJoin}
             />
-            <CreateMatchPanel
-              myColor={myColor} setMyColor={setMyColor}
-              useCustom={useCustom} setUseCustom={setUseCustom}
-              myDeck={myDeck} myDeckOk={myDeckOk}
-              myDecks={myDecks} selectedDeckId={mySelectedDeckId} onSelectDeck={setMySelectedDeckId}
-              seatChoice={seatChoice} setSeatChoice={setSeatChoice}
-              matchName={matchName} setMatchName={setMatchName}
-              wagerKind={wagerKind} setWagerKind={setWagerKind}
-              wagerAmount={wagerAmount} setWagerAmount={setWagerAmount}
-              onCreate={createAndJoin}
-            />
-            <ChallengePanel
-              target={challengeTarget} setTarget={setChallengeTarget}
-              message={challengeMsg} setMessage={setChallengeMsg}
-              busy={challengeBusy} onSend={sendChallenge}
-              outgoing={outgoingChallenges} onCancel={cancelOutgoing}
-              wagerKind={wagerKind} wagerAmount={wagerAmount}
-            />
+
+            {/* RIGHT — stacked action + community panels */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+              <CreateMatchPanel
+                myColor={myColor} setMyColor={setMyColor}
+                useCustom={useCustom} setUseCustom={setUseCustom}
+                myDeck={myDeck} myDeckOk={myDeckOk}
+                myDecks={myDecks} selectedDeckId={mySelectedDeckId} onSelectDeck={setMySelectedDeckId}
+                seatChoice={seatChoice} setSeatChoice={setSeatChoice}
+                matchName={matchName} setMatchName={setMatchName}
+                wagerKind={wagerKind} setWagerKind={setWagerKind}
+                wagerAmount={wagerAmount} setWagerAmount={setWagerAmount}
+                onCreate={createAndJoin}
+              />
+              <ChallengePanel
+                target={challengeTarget} setTarget={setChallengeTarget}
+                message={challengeMsg} setMessage={setChallengeMsg}
+                busy={challengeBusy} onSend={sendChallenge}
+                outgoing={outgoingChallenges} onCancel={cancelOutgoing}
+                wagerKind={wagerKind} wagerAmount={wagerAmount}
+              />
+              <CommunityPanel
+                leaderboard={leaderboard}
+                onViewProfile={onViewProfile}
+                activity={activity}
+              />
+            </div>
           </div>
-
-          <CommunityPanel
-            leaderboard={leaderboard}
-            onViewProfile={onViewProfile}
-            activity={activity}
-          />
         </div>
 
         <FooterStatsBar
@@ -3735,7 +4132,7 @@ function Lobby({
                 borderRadius: 6, color: '#e6d4ff',
               }}>
                 <div style={{ fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', fontSize: 11, color: '#c8a3ff' }}>Wagered Match</div>
-                <div style={{ marginTop: 2 }}>Accepting will agree to a <b style={{ color: '#fff' }}>{w.amount} $MASTER</b> wager — winner takes the pot.</div>
+                <div style={{ marginTop: 2 }}>Accepting will agree to a <b style={{ color: '#fff' }}>{w.amount} $DUEL</b> wager — winner takes the pot.</div>
               </div>;
             })()}
             <ColorChooser label="Your chain" value={joinColor} onChange={(c) => { setJoinUseCustom(false); setJoinColor(c); }} />
@@ -4067,7 +4464,7 @@ function CreateMatchPanel(props: {
           </div>
           {wagerKind === 'master' && (
             <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 10, color: LOBBY_TOKENS.muted, letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>STAKE ($MASTER)</div>
+              <div style={{ fontSize: 10, color: LOBBY_TOKENS.muted, letterSpacing: 1.5, fontWeight: 700, marginBottom: 4 }}>STAKE ($DUEL)</div>
               <input
                 type="number" min={1} value={wagerAmount}
                 onChange={e => setWagerAmount(e.target.value)}
@@ -4306,10 +4703,10 @@ function DeckPreview({ color, useCustom, myDeck }: { color: Color | null; useCus
     if (!color) return null;
     const meta = COLOR_META[color];
     const chainCards = BUILDABLE_CARDS.filter(c => c.color === color);
-    const top = chainCards.filter(c => c.type === 'meme' || c.type === 'move').slice(0, 4);
+    const top = chainCards.filter(c => c.type === 'monster' || c.type === 'spell').slice(0, 4);
     return {
       name: `${meta.name} Standard`,
-      flavor: `60 cards · mono-${meta.name} theme deck`,
+      flavor: `40 cards · ${meta.name} starter deck`,
       accent: meta.hex,
       topCards: top.map(c => ({ name: c.name, n: 4 })),
     };
@@ -4354,7 +4751,7 @@ function ChallengePanel(props: {
 }) {
   const { target, setTarget, message, setMessage, busy, onSend, outgoing, onCancel, wagerKind, wagerAmount } = props;
   const stakeLabel = wagerKind === 'master'
-    ? `Wager · ${Number(wagerAmount) || 0} $MASTER`
+    ? `Wager · ${Number(wagerAmount) || 0} $DUEL`
     : 'Free Match';
   return (
     <div style={{
@@ -4439,7 +4836,7 @@ function ChallengePanel(props: {
                   <span style={{ color: LOBBY_TOKENS.muted }}>→ </span>
                   <b style={{ color: '#fff' }}>{c.toName}</b>
                   {c.wagerKind === 'master' && (
-                    <span style={{ color: '#c8a3ff', marginLeft: 6 }}>· {c.wagerAmount} $MASTER</span>
+                    <span style={{ color: '#c8a3ff', marginLeft: 6 }}>· {c.wagerAmount} $DUEL</span>
                   )}
                 </div>
                 <button
@@ -4491,7 +4888,7 @@ function SolanaWalletPicker({ onPick, onCancel }: {
           color: '#fff', letterSpacing: 1, marginBottom: 4,
         }}>Choose Your Wallet</div>
         <div style={{ fontSize: 12, color: LOBBY_TOKENS.muted, marginBottom: 16 }}>
-          Sign the $MASTER wager deposit with your preferred Solana wallet.
+          Sign the $DUEL wager deposit with your preferred Solana wallet.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {wallets.map(w => (
@@ -4571,7 +4968,7 @@ function IncomingChallengesBanner({ challenges, onAccept, onDecline }: {
                   <span style={{ color: LOBBY_TOKENS.muted }}> challenges you</span>
                   {c.wagerKind === 'master' && (
                     <span style={{ color: '#c8a3ff', marginLeft: 6, fontWeight: 700 }}>
-                      · {c.wagerAmount} $MASTER
+                      · {c.wagerAmount} $DUEL
                     </span>
                   )}
                 </div>
@@ -4643,7 +5040,7 @@ function buildActivityFeed(matches: any[], leaderboard: Profile[]): ActivityItem
     items.push({
       id: `m-${m.matchID}`,
       icon: isWager ? '💎' : '⚔️',
-      text: <><b style={{ color: '#fff' }}>{creator}</b> opened {isWager ? <span style={{ color: '#c8a3ff' }}>a {w.amount} $MASTER wager</span> : 'a casual match'}</>,
+      text: <><b style={{ color: '#fff' }}>{creator}</b> opened {isWager ? <span style={{ color: '#c8a3ff' }}>a {w.amount} $DUEL wager</span> : 'a casual match'}</>,
     });
   }
   const topPlayer = leaderboard[0];
@@ -4712,8 +5109,8 @@ function CommunityPanel({ leaderboard, onViewProfile, activity }: {
         <div style={{ fontSize: 10, color: LOBBY_TOKENS.gold, letterSpacing: 2, fontWeight: 700, textTransform: 'uppercase' }}>Tournaments</div>
         <div style={{ fontFamily: '"Cinzel", serif', fontSize: 15, fontWeight: 800, color: '#fff', letterSpacing: 1, marginBottom: 10 }}>Upcoming</div>
         <TournamentCard
-          name="Daily $MASTER Cup"
-          flavor="Top placement wins $MASTER"
+          name="Daily $DUEL Cup"
+          flavor="Top placement wins $DUEL"
           countdownToNextUtcMidnight
           entrants={Math.max(8, leaderboard.length)}
           accent={LOBBY_TOKENS.gold}
@@ -4961,8 +5358,8 @@ function WagerStatusBadge({ matchID, compact }: { matchID: string; compact?: boo
     status.refunded ? '↩ Refunded'
     : status.settled ? '✅ Settled'
     : status.p0Funded && status.p1Funded ? '💰 Both deposited — match live'
-    : status.p0Funded || status.p1Funded ? `⌛ Waiting for opponent deposit (${amount} $MASTER each)`
-    : `⌛ Waiting for deposits (${amount} $MASTER each)`;
+    : status.p0Funded || status.p1Funded ? `⌛ Waiting for opponent deposit (${amount} $DUEL each)`
+    : `⌛ Waiting for deposits (${amount} $DUEL each)`;
   const color =
     status.refunded ? '#aaa'
     : status.settled ? '#22c55e'
@@ -5491,7 +5888,7 @@ export default function App() {
 // Reuses the Lobby's loaded deck library + selection state.
 function RankedQueuePanel({
   myName, decks, selectedDeckId, setSelectedDeckId, selectedDeckCards,
-  deckOk, onJoined, setError,
+  deckOk, onJoined, setError, wide = false,
 }: {
   myName: string;
   decks: DeckEntry[];
@@ -5501,6 +5898,8 @@ function RankedQueuePanel({
   deckOk: boolean;
   onJoined: (s: Seat) => void;
   setError: (msg: string) => void;
+  /** When true, lay the panel out as a horizontal hero strip instead of a column. */
+  wide?: boolean;
 }) {
   const [profile, setProfile] = useState<PublicRankedProfile | null>(null);
   const [region, setRegion] = useState<string>(() => {
@@ -5585,6 +5984,126 @@ function RankedQueuePanel({
   const inPlacements = placementRemaining > 0;
   const totalGames = (profile?.wins ?? 0) + (profile?.losses ?? 0);
   const wr = totalGames > 0 ? Math.round(((profile?.wins ?? 0) / totalGames) * 100) : 0;
+
+  // ── HERO (wide) layout ──────────────────────────────────────────────────
+  // Used when this panel is placed in a full-width row at the top of the
+  // lobby. Lays out as three flex sections side-by-side:
+  //   left   = title + rank badge + WR line
+  //   middle = deck + region pickers
+  //   right  = the big "ENTER RANKED QUEUE" call-to-action
+  // Falls back to the original vertical layout below when `wide` is false.
+  if (wide) {
+    return (
+      <div style={{
+        padding: 18, borderRadius: 14,
+        background: 'linear-gradient(135deg, #161025 0%, #1a1238 60%, #261545 100%)',
+        border: '1px solid rgba(192,132,252,0.45)',
+        boxShadow: '0 0 32px rgba(123,44,191,0.22)',
+        display: 'flex', flexDirection: 'row', flexWrap: 'wrap',
+        alignItems: 'center', gap: 22,
+      }}>
+        {/* LEFT — Title + rank badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 220, flex: '1 1 240px' }}>
+          {profile && <RankBadge p={profile} size="lg" />}
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              fontFamily: '"Cinzel", "Times New Roman", serif',
+              fontSize: 18, fontWeight: 800, letterSpacing: 1.4, color: '#c084fc',
+              lineHeight: 1.1,
+            }}>🏆 RANKED LADDER</div>
+            <div style={{ marginTop: 6, fontSize: 12, color: '#cfc4ff' }}>
+              {profile
+                ? (inPlacements
+                    ? <span>Placement matches remaining: <b style={{ color: '#ffb347' }}>{placementRemaining}</b></span>
+                    : <span><b style={{ color: '#fff' }}>{rankLabel(profile)}</b> · {profile.wins}W / {profile.losses}L · {wr}% WR</span>)
+                : <span style={{ color: '#888' }}>Loading rank…</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* MIDDLE — Deck + region pickers (only when not queued) */}
+        {!queued && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 8,
+            flex: '1 1 280px', minWidth: 220,
+          }}>
+            {decks.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label style={{ fontSize: 11, color: '#aaa', minWidth: 50 }}>Deck:</label>
+                <select
+                  value={selectedDeckId ?? ''}
+                  onChange={e => setSelectedDeckId(Number(e.target.value))}
+                  style={{ flex: 1, padding: '6px 10px', background: '#1a1a1a', color: '#eee', border: '1px solid #444', borderRadius: 4, fontSize: 12 }}
+                >
+                  {decks.map(d => {
+                    const valid = validateDeck(d.cards).ok;
+                    return (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.cards.length}) {d.isActive ? '★' : ''} {valid ? '' : '⚠'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label style={{ fontSize: 11, color: '#aaa', minWidth: 50 }}>Region:</label>
+              <select value={region} onChange={e => setRegion(e.target.value)}
+                style={{ flex: 1, padding: '6px 10px', background: '#1a1a1a', color: '#eee', border: '1px solid #444', borderRadius: 4, fontSize: 12 }}>
+                <option value="global">Global</option>
+                <option value="na">North America</option>
+                <option value="eu">Europe</option>
+                <option value="ap">Asia Pacific</option>
+              </select>
+            </div>
+            {!deckOk && (
+              <div style={{ fontSize: 11, color: '#f99', fontStyle: 'italic' }}>
+                Pick a valid 60-card deck to queue.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* RIGHT — CTA or queue countdown */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flex: '1 1 240px', minWidth: 220 }}>
+          {!queued ? (
+            <button
+              onClick={joinQueue}
+              disabled={busy || !deckOk}
+              style={{
+                padding: '14px 26px', fontSize: 15,
+                borderRadius: 10, border: 'none', fontWeight: 800, letterSpacing: 0.8,
+                background: deckOk ? 'linear-gradient(90deg, #7b2cbf, #c084fc)' : '#3a2f6a',
+                color: deckOk ? '#fff' : '#888',
+                cursor: deckOk ? 'pointer' : 'not-allowed',
+                boxShadow: deckOk ? '0 8px 24px -8px rgba(192,132,252,0.6)' : 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >🏆  ENTER RANKED QUEUE</button>
+          ) : (
+            <div style={{ textAlign: 'center', minWidth: 200 }}>
+              <div style={{ fontSize: 10, color: '#aaa', marginBottom: 4, fontFamily: 'serif', letterSpacing: 1.5, textTransform: 'uppercase' }}>Searching for opponent…</div>
+              <div style={{
+                fontSize: 32, fontWeight: 800, color: '#c084fc',
+                fontVariantNumeric: 'tabular-nums',
+                fontFamily: '"Cinzel", "Times New Roman", serif',
+                textShadow: '0 0 16px rgba(192,132,252,0.5)',
+              }}>
+                {Math.floor(waitMs / 60000)}:{String(Math.floor((waitMs / 1000) % 60)).padStart(2, '0')}
+              </div>
+              <div style={{ fontSize: 10, color: '#888', marginTop: 2, fontStyle: 'italic' }}>
+                MMR window expands ±50 every 10s
+              </div>
+              <button onClick={leaveQueue} disabled={busy}
+                style={{ marginTop: 8, padding: '6px 14px', background: '#222', color: '#ddd', border: '1px solid #444', borderRadius: 4, cursor: 'pointer', fontSize: 11 }}>
+                Leave Queue
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -5989,7 +6508,7 @@ function RankedHub({
               fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: 0.5,
               textShadow: '0 0 12px rgba(255,179,71,0.45)',
             }}>
-              $1,000 of $MASTER
+              $1,000 of $DUEL
             </div>
             <div style={{
               fontFamily: '"Cinzel", "Times New Roman", serif',
@@ -6097,7 +6616,7 @@ function Banner({ kind, children }: { kind: 'error' | 'info'; children: React.Re
   return <div style={{ padding: 10, background: bg, border: `1px solid ${bd}`, color: '#eee', borderRadius: 4, fontSize: 13, marginTop: 8 }}>{children}</div>;
 }
 // ── Wager helpers ───────────────────────────────────────────────────────────
-// Wagers are denominated in $MASTER (Solana SPL token).
+// Wagers are denominated in $DUEL (Solana SPL token).
 export const MASTER_TOKEN_ADDRESS = 'DpPowzjETiU6421ReuwBB8XmDB7sMyB2JGzFLssYpump';
 export const SOLANA_RPC_URL =
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SOLANA_RPC) ||
@@ -6109,7 +6628,7 @@ function parseWager(kind: 'free' | 'master', raw: string): Wager | null {
   if (kind === 'free') return { kind: 'free' };
   const n = Number(raw);
   if (!isFinite(n) || n <= 0) return null;
-  // $MASTER amounts are whole tokens (no fractional UI for now).
+  // $DUEL amounts are whole tokens (no fractional UI for now).
   return { kind: 'master', amount: Math.round(n) };
 }
 
@@ -6133,7 +6652,7 @@ function readMatchName(setupData: any): string {
 }
 
 function wagerLabel(w: Wager): string {
-  return w.kind === 'free' ? 'Free Match' : `Wager · ${w.amount} $MASTER`;
+  return w.kind === 'free' ? 'Free Match' : `Wager · ${w.amount} $DUEL`;
 }
 
 function WagerControls({
@@ -6164,7 +6683,7 @@ function WagerControls({
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 11, color: '#c9b97a', minWidth: 50 }}>STAKES</span>
         <Btn k="free"   label="Free" />
-        <Btn k="master" label="Wager · $MASTER" />
+        <Btn k="master" label="Wager · $DUEL" />
       </div>
       {kind === 'master' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -6180,7 +6699,7 @@ function WagerControls({
               border: '1px solid rgba(180,150,80,0.55)', borderRadius: 3,
             }}
           />
-          <span style={{ fontSize: 11, color: '#c9b97a', fontWeight: 700 }}>$MASTER</span>
+          <span style={{ fontSize: 11, color: '#c9b97a', fontWeight: 700 }}>$DUEL</span>
         </div>
       )}
     </div>

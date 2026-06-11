@@ -10,14 +10,20 @@ import { initDb, upsertProfile, updateProfile, getProfile, getProfileByWallet, l
   countBoosterTickets, nextBoosterTicketNumber, isBoosterPaymentSigUsed,
   insertBoosterTicket, getBoosterTicketsByWallet, getBoosterTicketByMint,
   redeemTicketDigital, redeemTicketPhysical, redeemTicketMerch,
+  isDuelPackSigUsed, insertDuelPack, getDuelPacksByWallet, getOwnedCardCounts,
 } from './db';
-import { validateDeck, CARDS } from './cards';
+import { validateDeck, CARDS, COLOR_META, isMonster, isSpell, isTrap } from './cards';
 import { bootRanked, routeRanked } from './ranked';
 import {
   BOOSTER_PRICE_SOL, BOOSTER_PRICE_LAMPORTS, BOOSTER_SUPPLY_CAP, BOOSTER_MINTED_OFFSET,
   treasuryPubkey, boosterMintEnabled,
   buildPaymentTx, verifyPayment, mintTicketNft,
 } from './booster-mint';
+import {
+  DUEL_PACK_PRICE_UI, DUEL_PACK_PRICE_BASE, DUEL_PACK_SIZE, DUEL_TOKEN_DECIMALS,
+  duelPackEnabled, duelTreasuryPubkey, duelTokenMintBase58,
+  buildPackPaymentTx, verifyPackPayment, rollPackCards, mintPackCards, rarityOf,
+} from './duel-pack-mint';
 
 const distDir = path.resolve(__dirname, '..', 'dist');
 
@@ -441,6 +447,127 @@ app.use(async (ctx, next) => {
       const updated = await redeemTicketMerch(mint, addr);
       if (!updated) { ctx.status = 409; ctx.body = { ok: false, error: 'redemption race' }; return; }
       ctx.body = { ok: true, ticket: updated };
+      return;
+    }
+
+    // ── Duel packs ($DUEL token-paid 5-card NFT mints) ──────────────────────
+    if (method === 'GET' && url === '/api/duel-packs/supply') {
+      ctx.body = {
+        priceUi: DUEL_PACK_PRICE_UI,
+        priceBase: DUEL_PACK_PRICE_BASE.toString(),
+        decimals: DUEL_TOKEN_DECIMALS,
+        packSize: DUEL_PACK_SIZE,
+        treasury: duelTreasuryPubkey(),
+        tokenMint: duelTokenMintBase58(),
+        mode: duelPackEnabled() ? 'live' as const : 'preview' as const,
+      };
+      return;
+    }
+    if (method === 'POST' && url === '/api/duel-packs/buy-intent') {
+      const body = await readJson(ctx);
+      const wallet = String(body?.wallet ?? '').trim();
+      if (!wallet) { ctx.status = 400; ctx.body = { ok: false, error: 'wallet required' }; return; }
+      if (!duelPackEnabled()) {
+        ctx.status = 503; ctx.body = { ok: false, error: 'duel pack mint not configured (need BOOSTER_TREASURY_KEYPAIR + DUEL_TOKEN_MINT env vars)' }; return;
+      }
+      try {
+        const intent = await buildPackPaymentTx(wallet);
+        ctx.body = { ok: true, ...intent };
+      } catch (e: any) {
+        ctx.status = 400; ctx.body = { ok: false, error: String(e?.message ?? e) };
+      }
+      return;
+    }
+    if (method === 'POST' && url === '/api/duel-packs/confirm') {
+      const body = await readJson(ctx);
+      const wallet = String(body?.wallet ?? '').trim();
+      const signature = String(body?.signature ?? '').trim();
+      if (!wallet || !signature) { ctx.status = 400; ctx.body = { ok: false, error: 'wallet + signature required' }; return; }
+      if (!duelPackEnabled()) {
+        ctx.status = 503; ctx.body = { ok: false, error: 'duel pack mint not configured' }; return;
+      }
+      if (await isDuelPackSigUsed(signature)) {
+        ctx.status = 409; ctx.body = { ok: false, error: 'payment signature already used' }; return;
+      }
+      try {
+        const paid = await verifyPackPayment(signature, wallet);
+        const cardIds = rollPackCards();
+        // Determine the public-facing base URL the metadata can be reached at.
+        const proto = String(ctx.request.headers['x-forwarded-proto'] || ctx.request.protocol || 'http');
+        const host  = String(ctx.request.headers['x-forwarded-host']  || ctx.request.host     || `localhost:${PORT}`);
+        const baseUrl = `${proto}://${host}`;
+        const minted = await mintPackCards(wallet, cardIds, baseUrl);
+        const mintAddresses = minted.map(m => m.mintAddress);
+        const pack = await insertDuelPack({
+          buyerWallet: wallet,
+          paymentSig: signature,
+          pricePaid: paid.amountBase.toString(),
+          cardIds,
+          mintAddresses,
+        });
+        ctx.body = { ok: true, pack, mints: minted };
+      } catch (e: any) {
+        console.error('[duel-packs] confirm failed', e);
+        ctx.status = 400; ctx.body = { ok: false, error: String(e?.message ?? e) };
+      }
+      return;
+    }
+    if (method === 'GET' && url.startsWith('/api/duel-packs/owned/')) {
+      const addr = decodeURIComponent(url.slice('/api/duel-packs/owned/'.length));
+      const packs = await getDuelPacksByWallet(addr);
+      const counts = await getOwnedCardCounts(addr);
+      ctx.body = { wallet: addr, packs, counts };
+      return;
+    }
+
+    // ── Per-card NFT metadata (Metaplex JSON) ────────────────────────────────
+    if (method === 'GET' && /^\/api\/cards\/[^/]+\/metadata$/.test(url)) {
+      const cardId = decodeURIComponent(url.split('/')[3] ?? '');
+      const def = CARDS[cardId];
+      if (!def) { ctx.status = 404; ctx.body = { error: 'unknown card' }; return; }
+      const meta = COLOR_META[def.color];
+      const proto = String(ctx.request.headers['x-forwarded-proto'] || ctx.request.protocol || 'http');
+      const host  = String(ctx.request.headers['x-forwarded-host']  || ctx.request.host     || `localhost:${PORT}`);
+      const baseUrl = `${proto}://${host}`;
+      // Card image: prefer the explicit def.image URL (CDN or local /cards/*),
+      // otherwise fall back to the chain template.
+      const image = def.image
+        ? (def.image.startsWith('http') ? def.image : `${baseUrl}${def.image}`)
+        : `${baseUrl}${meta.template ?? '/template-machine.jpg'}`;
+      const attributes: Array<{ trait_type: string; value: string | number }> = [
+        { trait_type: 'Chain', value: meta.name },
+        { trait_type: 'Card Type', value: def.type },
+        { trait_type: 'Rarity', value: rarityOf(def) },
+      ];
+      if (isMonster(def)) {
+        attributes.push(
+          { trait_type: 'Attribute', value: def.attribute },
+          { trait_type: 'Race', value: def.race },
+          { trait_type: 'Subtype', value: def.subtype },
+          { trait_type: 'ATK', value: def.atk },
+          ...(def.def != null ? [{ trait_type: 'DEF', value: def.def }] as const : []),
+          ...(def.level != null ? [{ trait_type: 'Level', value: def.level }] as const : []),
+          ...(def.rank != null ? [{ trait_type: 'Rank', value: def.rank }] as const : []),
+          ...(def.linkRating != null ? [{ trait_type: 'Link Rating', value: def.linkRating }] as const : []),
+        );
+        if (def.isTuner) attributes.push({ trait_type: 'Tuner', value: 'Yes' });
+      } else if (isSpell(def)) {
+        attributes.push({ trait_type: 'Spell Type', value: def.subtype });
+      } else if (isTrap(def)) {
+        attributes.push({ trait_type: 'Trap Type', value: def.subtype });
+      }
+      ctx.body = {
+        name: def.name,
+        symbol: 'DUEL',
+        description: def.text,
+        image,
+        external_url: 'https://www.masterstcg.com',
+        attributes,
+        properties: {
+          category: 'image',
+          files: [{ uri: image, type: image.endsWith('.svg') ? 'image/svg+xml' : 'image/png' }],
+        },
+      };
       return;
     }
     // ── Challenges ────────────────────────────────────────────────────────────

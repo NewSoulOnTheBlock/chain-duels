@@ -1,11 +1,11 @@
-# Memetic Masters — $MASTER Wager Program Deploy Runbook
+# Chain Duels — $DUEL Wager Program Deploy Runbook
 
 The on-chain wager program is an Anchor (v0.32.1) Solana program that escrows
-$MASTER deposits from two players, burns 10% of the total pot on settle, and
+$DUEL deposits from two players, burns 10% of the total pot on settle, and
 sends the remaining 90% to the winner.
 
 - **Program ID** (default): `9JnG7C3uBVnMgx5tSAxSb9ccSuwCC4LkmyV26goXe1pC`
-- **$MASTER mint**: `DpPowzjETiU6421ReuwBB8XmDB7sMyB2JGzFLssYpump` (6 decimals)
+- **$DUEL mint**: `DpPowzjETiU6421ReuwBB8XmDB7sMyB2JGzFLssYpump` (6 decimals)
 - **Burn rate**: 10% of pot (1000 bps; max 20%)
 - **Cancel timeout**: 15 min before Open matches can be cancelled by creator
 
@@ -25,7 +25,7 @@ cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
 avm install 0.32.1 && avm use 0.32.1
 
 # build:
-cd /mnt/c/Users/roota/chains-tcg/solana
+cd /mnt/c/Users/roota/duelmasters/solana
 anchor build
 ```
 
@@ -66,7 +66,7 @@ The oracle is the only key allowed to call `settle_match`. It lives on the
 Render server and signs settle txs when a wagered game ends.
 
 ```bash
-cd /mnt/c/Users/roota/chains-tcg/solana
+cd /mnt/c/Users/roota/duelmasters/solana
 ts-node scripts/gen-oracle.ts
 ```
 
@@ -102,10 +102,10 @@ Redeploy the service.
 ## 7. Smoke test on mainnet
 
 1. Open the lobby in two Phantom sessions (e.g. two browser profiles).
-2. Create a wagered match with the smallest allowed amount (1 $MASTER).
+2. Create a wagered match with the smallest allowed amount (1 $DUEL).
 3. Both wallets sign deposit txs.
 4. Play the match to completion.
-5. Check on-chain: the winner's ATA receives 1.8 $MASTER and 0.2 $MASTER is
+5. Check on-chain: the winner's ATA receives 1.8 $DUEL and 0.2 $DUEL is
    burned (decreases total supply).
 
 ```bash
@@ -126,5 +126,5 @@ spl-token display DpPowzjETiU6421ReuwBB8XmDB7sMyB2JGzFLssYpump
 - **Oracle as single point of compromise.** If the Render dyno is compromised
   the attacker can drain any active wager to themselves. v2: multisig or
   time-locked oracle.
-- **$MASTER decimals.** Hardcoded to 6. Verify before deploy via
+- **$DUEL decimals.** Hardcoded to 6. Verify before deploy via
   `spl-token display DpPowzjETiU6421ReuwBB8XmDB7sMyB2JGzFLssYpump`.

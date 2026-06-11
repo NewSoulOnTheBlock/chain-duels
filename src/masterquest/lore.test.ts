@@ -1,28 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import { SITES, ACTS, TOTAL_SITES, INTERLUDES, sitesByAct, sitesByChain, MAP_VIEWBOX } from './lore';
 
-describe('Memetic Masterquest lore', () => {
-  it('has exactly 15 sacred sites', () => {
-    expect(TOTAL_SITES).toBe(15);
+describe('Chain Duels — Golden Deck Saga lore', () => {
+  it('has exactly 11 sites (10 fragments + final boss)', () => {
+    expect(TOTAL_SITES).toBe(11);
   });
 
-  it('numbers sites 1..15 with no gaps or duplicates', () => {
+  it('numbers sites 1..11 with no gaps or duplicates', () => {
     const idxs = SITES.map(s => s.index).sort((a, b) => a - b);
-    expect(idxs).toEqual(Array.from({ length: 15 }, (_, i) => i + 1));
+    expect(idxs).toEqual(Array.from({ length: 11 }, (_, i) => i + 1));
   });
 
   it('uses unique site ids', () => {
-    expect(new Set(SITES.map(s => s.id)).size).toBe(15);
+    expect(new Set(SITES.map(s => s.id)).size).toBe(11);
   });
 
   it('uses unique rival names', () => {
-    expect(new Set(SITES.map(s => s.rival.name)).size).toBe(15);
+    expect(new Set(SITES.map(s => s.rival.name)).size).toBe(11);
   });
 
-  it('has exactly 5 sites per act', () => {
-    for (const act of Object.keys(ACTS) as Array<keyof typeof ACTS>) {
-      expect(sitesByAct(act).length).toBe(5);
-    }
+  it('splits sites into 3 / 3 / 5 across the three acts', () => {
+    expect(sitesByAct('awakening').length).toBe(3);
+    expect(sitesByAct('champions').length).toBe(3);
+    expect(sitesByAct('void').length).toBe(5);
   });
 
   it('places each act on the right index range', () => {
@@ -33,14 +33,14 @@ describe('Memetic Masterquest lore', () => {
     }
   });
 
-  it('puts 3 sites on every chain in total', () => {
+  it('touches every chain at least once', () => {
     for (const c of ['bnb', 'sol', 'avax', 'eth', 'xrp'] as const) {
-      expect(sitesByChain(c).length).toBe(3);
+      expect(sitesByChain(c).length).toBeGreaterThanOrEqual(1);
     }
   });
 
   it('escalates difficulty across acts (no easy in Act III)', () => {
-    const actIII = sitesByAct('coronation');
+    const actIII = sitesByAct('void');
     expect(actIII.every(s => s.rival.difficulty !== 'easy')).toBe(true);
   });
 
@@ -60,5 +60,11 @@ describe('Memetic Masterquest lore', () => {
       expect(s.mapPos.y).toBeGreaterThanOrEqual(0);
       expect(s.mapPos.y).toBeLessThanOrEqual(MAP_VIEWBOX.h);
     }
+  });
+
+  it('ends Act III with the First Champion at the summit', () => {
+    const last = SITES.find(s => s.index === 11);
+    expect(last?.id).toBe('first_champion_summit');
+    expect(last?.rival.name).toBe('The First Champion');
   });
 });
