@@ -452,14 +452,26 @@ app.use(async (ctx, next) => {
 
     // ── Duel packs ($DUEL token-paid 5-card NFT mints) ──────────────────────
     if (method === 'GET' && url === '/api/duel-packs/supply') {
+      // Inspect raw presence vs parse success so the client can show *why*
+      // we're stuck in preview mode without ever leaking the actual values.
+      const treasuryEnvSet = !!(process.env.BOOSTER_TREASURY_KEYPAIR || process.env.CUSTODIAL_ESCROW_KEYPAIR);
+      const tokenMintEnvSet = !!process.env.DUEL_TOKEN_MINT;
+      const treasuryPk = duelTreasuryPubkey();
+      const tokenMintPk = duelTokenMintBase58();
       ctx.body = {
         priceUi: DUEL_PACK_PRICE_UI,
         priceBase: DUEL_PACK_PRICE_BASE.toString(),
         decimals: DUEL_TOKEN_DECIMALS,
         packSize: DUEL_PACK_SIZE,
-        treasury: duelTreasuryPubkey(),
-        tokenMint: duelTokenMintBase58(),
+        treasury: treasuryPk,
+        tokenMint: tokenMintPk,
         mode: duelPackEnabled() ? 'live' as const : 'preview' as const,
+        setup: {
+          treasuryEnvSet,
+          treasuryParsed: treasuryPk !== null,
+          tokenMintEnvSet,
+          tokenMintParsed: tokenMintPk !== null,
+        },
       };
       return;
     }
