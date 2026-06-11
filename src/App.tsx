@@ -599,7 +599,7 @@ function Login({ onLogin, onFirstTime }: {
         </div>
 
         <div style={{ textAlign: 'center', fontSize: 11, color: '#7a7060', letterSpacing: 1 }}>
-          $DUEL · DpPowzjETiU6421ReuwBB8XmDB7sMyB2JGzFLssYpump
+          {/* CA hidden until the real $DUEL mint is announced. */}
         </div>
       </div>
     </div>
@@ -1675,7 +1675,7 @@ function Landing({
         }}>
           <HomeMenuBtn small icon="📦" title="BOOSTERS" onClick={onBoosters} />
           <HomeMenuBtn small icon="📖" title="RULES" onClick={onRules} />
-          <HomeMenuBtn small icon="📰" title="NEWS" onClick={() => window.open('https://x.com/MemeticMasters', '_blank', 'noopener')} />
+          <HomeMenuBtn small icon="📰" title="NEWS" onClick={() => window.open('https://x.com/Chainduels', '_blank', 'noopener')} />
         </div>
       </div>
 
@@ -1732,44 +1732,9 @@ function HomeMenuBtn({
 }
 
 function ContractAddressFooter() {
-  const mobile = useIsMobile();
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(MASTER_TOKEN_ADDRESS);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {}
-  }
-  return (
-    <div style={{
-      position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 3,
-      padding: mobile ? '6px 10px' : '8px 18px',
-      background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 60%)',
-      display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10,
-      flexWrap: 'wrap',
-    }}>
-      <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: '#ffb347', textShadow: '0 1px 4px #000' }}>
-        $DUEL CA:
-      </span>
-      <button
-        onClick={copy}
-        title="Click to copy"
-        style={{
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-          fontSize: mobile ? 10 : 12, color: '#fff', fontWeight: 600,
-          background: 'rgba(20,20,20,0.7)',
-          border: '1px solid rgba(255,179,71,0.45)', borderRadius: 4,
-          padding: mobile ? '3px 6px' : '4px 8px',
-          cursor: 'pointer', letterSpacing: 0.4,
-          maxWidth: '92vw', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}
-      >{MASTER_TOKEN_ADDRESS}</button>
-      <span style={{ fontSize: 11, color: copied ? '#7fffa0' : '#888', minWidth: 50 }}>
-        {copied ? '✓ copied' : '(click to copy)'}
-      </span>
-    </div>
-  );
+  // CA hidden until the real $DUEL mint is announced. The full footer markup
+  // is preserved in git history; restore from there when the mint goes live.
+  return null;
 }
 
 function MenuBtn({ children, onClick, primary, ranked }: { children: React.ReactNode; onClick: () => void; primary?: boolean; ranked?: boolean }) {

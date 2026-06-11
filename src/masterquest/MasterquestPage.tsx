@@ -13,7 +13,7 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { SoloClient } from '../SoloClient';
 import type { Color } from '../cards';
-import { validateDeck } from '../cards';
+import { validateDeck, STARTER_DECKS, COLORS } from '../cards';
 import { listDecksApi, type DeckEntry } from '../profiles';
 import {
   PROLOGUE, ACTS, SITES, TOTAL_SITES, EPILOGUE, INTERLUDES,
@@ -48,6 +48,36 @@ const ACT_LABEL: Record<keyof typeof ACTS, string> = {
   void:      'Act III — The Void',
 };
 
+// ── Starter decks as synthetic DeckEntry rows ──────────────────────────────
+// Saved deck ids on the server are positive ints. We reserve negative ids for
+// the five chain-locked starter decks so they sort first and never collide
+// with anything the server returns. Selecting one of these is the standard
+// onboarding path for new players (who start with 0 owned cards and so
+// cannot yet build a custom deck).
+const STARTER_DECK_LABEL: Record<Color, string> = {
+  bnb:  'BNB Starter',
+  sol:  'Solana Starter',
+  avax: 'Avalanche Starter',
+  eth:  'Ethereum Starter',
+  xrp:  'XRP Starter',
+};
+const STARTER_DECK_ID: Record<Color, number> = {
+  bnb: -1, sol: -2, avax: -3, eth: -4, xrp: -5,
+};
+function buildStarterEntries(): DeckEntry[] {
+  return COLORS.map<DeckEntry>(c => ({
+    id: STARTER_DECK_ID[c],
+    name: STARTER_DECK_LABEL[c],
+    cards: STARTER_DECKS[c],
+    isActive: false,
+  }));
+}
+function isStarterId(id: number): boolean { return id < 0; }
+function starterColorOfId(id: number): Color | null {
+  for (const c of COLORS) if (STARTER_DECK_ID[c] === id) return c;
+  return null;
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────
 
 export function MasterquestPage({
@@ -61,11 +91,23 @@ export function MasterquestPage({
   const [showEpilogue, setShowEpilogue] = useState<boolean>(false);
 
   // ── Deck chooser ───────────────────────────────────────────────────────
-  // Masterquest requires a CUSTOM deck — no starters allowed. The player
-  // must have built and saved a legal deck in the Library first.
-  const [decks, setDecks] = useState<DeckEntry[]>([]);
+  // Saga mode accepts either one of the 5 chain-locked starter decks (always
+  // available, no collection required) or any custom 60-card deck the player
+  // built in the Library. Starters appear first in the picker so new players
+  // can jump straight into Site I without an empty-state.
+  const [savedDecks, setSavedDecks] = useState<DeckEntry[]>([]);
   const [decksLoading, setDecksLoading] = useState<boolean>(true);
-  const [selectedDeckId, setSelectedDeckId] = useState<number | null>(null);
+  const [selectedDeckId, setSelectedDeckId] = useState<number | null>(
+    () => STARTER_DECK_ID.bnb,  // default to the BNB starter so the duel buttons unlock immediately
+  );
+
+  // Merged list = 5 starters first, then any saved customs. Memoised so the
+  // deck-chooser doesn't rebuild every render.
+  const starterEntries = useMemo(() => buildStarterEntries(), []);
+  const decks = useMemo<DeckEntry[]>(
+    () => [...starterEntries, ...savedDecks],
+    [starterEntries, savedDecks],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -75,11 +117,13 @@ export function MasterquestPage({
         const list = await listDecksApi(myName);
         if (cancelled) return;
         const legal = list.filter(d => validateDeck(d.cards).ok);
-        setDecks(legal);
-        // Auto-select the first legal deck for convenience.
-        if (legal.length > 0) setSelectedDeckId(legal[0].id);
+        setSavedDecks(legal);
+        // If the player has a saved active deck, auto-select it on first load
+        // so they don't have to re-pick on every page visit.
+        const active = legal.find(d => d.isActive);
+        if (active) setSelectedDeckId(active.id);
       } catch {
-        if (!cancelled) setDecks([]);
+        if (!cancelled) setSavedDecks([]);
       } finally {
         if (!cancelled) setDecksLoading(false);
       }
@@ -480,10 +524,9 @@ function SiteModal({
         </>
       ) : (
         <>
-          <b style={{ color: '#ff9a9a' }}>⚠ No custom deck selected.</b>{' '}
-          Masterquest requires a deck you built yourself — open the Library on the
-          Profile page, build &amp; save a legal 60-card deck, then return here and
-          pick it from the chooser above the map.
+          <b style={{ color: '#ff9a9a' }}>⚠ No deck selected.</b>{' '}
+          Pick one of the 5 chain starter decks or a custom deck from the
+          chooser above the map to unlock this duel.
         </>
       )}
     </div>
@@ -622,34 +665,47 @@ function DeckChooser({
           <div style={{ fontSize: 12, opacity: 0.65 }}>loading saved decks…</div>
         )}
 
-        {!loading && decks.length === 0 && (
-          <div style={{ fontSize: 12, color: '#ff9a9a' }}>
-            No legal custom decks found. Build a 60-card deck in the Library
-            (Profile → Library) first — Masterquest does <b>not</b> allow starter
-            decks.
-          </div>
-        )}
-
-        {!loading && decks.length > 0 && (
+        {!loading && (
           <>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {decks.map(d => {
                 const active = selectedDeckId === d.id;
+                const starterColor = starterColorOfId(d.id);
+                const accent = starterColor ? CHAIN_HEX[starterColor] : '#8a6bf0';
                 return (
                   <button key={d.id}
                     onClick={() => onSelect(d.id)}
                     style={{
-                      background: active ? '#6c4bd8' : '#1a1230',
-                      color: active ? '#fff' : '#cfc4ff',
-                      border: `2px solid ${active ? '#8a6bf0' : '#3a2f6a'}`,
+                      background: active
+                        ? (starterColor ? `${accent}` : '#6c4bd8')
+                        : '#1a1230',
+                      color: active
+                        ? (starterColor && starterColor !== 'eth' ? '#fff' : (starterColor === 'eth' ? '#1a1230' : '#fff'))
+                        : '#cfc4ff',
+                      border: `2px solid ${active ? accent : '#3a2f6a'}`,
                       borderRadius: 8, padding: '8px 12px',
                       fontWeight: 700, fontSize: 12, cursor: 'pointer',
                       letterSpacing: 0.3,
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
                     }}>
+                    {starterColor && (
+                      <span style={{
+                        display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                        background: accent, boxShadow: `0 0 6px ${accent}88`,
+                      }} />
+                    )}
                     {d.name || `Deck #${d.id}`}{' '}
                     <span style={{ opacity: 0.65, fontWeight: 400 }}>
                       ({d.cards.length})
                     </span>
+                    {starterColor && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 800, letterSpacing: 1,
+                        padding: '1px 5px', borderRadius: 3,
+                        background: active ? 'rgba(0,0,0,0.25)' : `${accent}33`,
+                        color: active ? '#fff' : accent,
+                      }}>STARTER</span>
+                    )}
                   </button>
                 );
               })}
@@ -659,6 +715,10 @@ function DeckChooser({
                 ⚠ Select a deck above to unlock the duels.
               </div>
             )}
+            <div style={{ fontSize: 11, opacity: 0.6 }}>
+              Starter decks are free to play. Build a custom deck in the Library
+              (Profile → Library) once you've opened a few packs.
+            </div>
           </>
         )}
       </div>
