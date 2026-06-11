@@ -56,22 +56,44 @@ export const DUEL_PACK_PRICE_UI = Number(process.env.DUEL_PACK_PRICE ?? 100_000)
 export const DUEL_PACK_PRICE_BASE = BigInt(DUEL_PACK_PRICE_UI) * (10n ** BigInt(DUEL_TOKEN_DECIMALS));
 export const DUEL_PACK_SIZE = Number(process.env.DUEL_PACK_SIZE ?? 5);
 
-const RPC_URL =
-  process.env.VITE_SOLANA_RPC ||
+// Configured RPC — pulled from env. This is the PRIMARY endpoint used for all
+// server-side mint operations (signature confirms, ATA reads, NFT mints). The
+// public RPCs below are only used as fallbacks if the configured one fails.
+const CONFIGURED_RPC =
   process.env.SOLANA_RPC ||
-  (process.env.HELIUS_API_KEY ? `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}` : '') ||
-  'https://solana-rpc.publicnode.com';
+  process.env.VITE_SOLANA_RPC ||
+  (process.env.HELIUS_API_KEY
+    ? `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`
+    : '');
 
-const RPC_POOL: string[] = Array.from(new Set([
+// Public fallback RPCs. These get rate-limited fast and often refuse mint
+// transactions, so we always try the configured RPC first.
+const PUBLIC_FALLBACK_RPCS = [
   'https://solana-rpc.publicnode.com',
   'https://solana-mainnet.public.blastapi.io',
   'https://solana.drpc.org',
   'https://api.mainnet-beta.solana.com',
-  RPC_URL,
-]));
+];
+
+const RPC_POOL: string[] = Array.from(new Set(
+  [CONFIGURED_RPC, ...PUBLIC_FALLBACK_RPCS].filter(Boolean),
+));
 
 function conn(): Connection {
   return new Connection(RPC_POOL[0], 'confirmed');
+}
+
+/** Try each RPC in priority order until one succeeds. */
+async function withRpcFailover<T>(fn: (c: Connection) => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (const url of RPC_POOL) {
+    try {
+      return await fn(new Connection(url, 'confirmed'));
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr ?? new Error('all RPCs failed');
 }
 
 // ── Treasury keypair (shared with booster-mint.ts) ─────────────────────────
